@@ -1,16 +1,99 @@
+import 'package:disha_ai/features/nutritionist/presentation/controllers/expert_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../data/models/expert_model.dart';
 
-class NutritionistDetailScreen extends StatelessWidget {
-  const NutritionistDetailScreen({super.key, required this.nutritionistData});
+class NutritionistDetailScreen extends StatefulWidget {
+  const NutritionistDetailScreen({super.key, required this.expert});
 
-  final Map<String, dynamic> nutritionistData;
+  final ExpertModel expert;
+
+  @override
+  State<NutritionistDetailScreen> createState() =>
+      _NutritionistDetailScreenState();
+}
+
+class _NutritionistDetailScreenState extends State<NutritionistDetailScreen> {
+  final ExpertController _expertController = Get.find<ExpertController>();
+
+  void _showConsultDialog() {
+    final TextEditingController messageController = TextEditingController(
+      text: "I want a customized diet plan.",
+    );
+
+    Get.defaultDialog(
+      title: "Consult ${widget.expert.name}",
+      titleStyle: const TextStyle(color: AppColors.textPrimary),
+      backgroundColor: AppColors.surface,
+      content: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: messageController,
+              maxLines: 3,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                hintText: "Enter your message...",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Obx(
+              () => ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
+                onPressed: _expertController.isConsulting.value
+                    ? null
+                    : () async {
+                        final success = await _expertController.consultExpert(
+                          expertId: widget.expert.id,
+                          message: messageController.text,
+                        );
+                        Get.back();
+                        if (success) {
+                          Get.snackbar(
+                            'Success',
+                            'Enquiry sent successfully to ${widget.expert.name}!',
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: AppColors.surface,
+                            colorText: AppColors.textPrimary,
+                          );
+                        } else {
+                          Get.snackbar(
+                            'Error',
+                            _expertController.errorMessage.value,
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: Colors.redAccent,
+                            colorText: Colors.white,
+                          );
+                        }
+                      },
+                child: _expertController.isConsulting.value
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.black,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        "Send Enquiry",
+                        style: TextStyle(color: Colors.black),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final data = nutritionistData;
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -25,7 +108,7 @@ class NutritionistDetailScreen extends StatelessWidget {
           ),
         ),
         title: Text(
-          data['name'] ?? "Specialist Profile",
+          widget.expert.name,
           style: const TextStyle(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.bold,
@@ -53,15 +136,15 @@ class NutritionistDetailScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Profile Header Card
-                      _buildProfileHeader(data),
+                      _buildProfileHeader(),
                       const SizedBox(height: 24),
 
-                      // Experience Section
+                      // Designation Section
                       _buildInfoSection(
-                        title: "Experience",
+                        title: "Designation",
                         content:
-                            data['experience'] ??
-                            '5+ Years of Clinical Practice',
+                            widget.expert.designation ??
+                            'Professional Health Consultant',
                         icon: Icons.work_history_rounded,
                       ),
                       const SizedBox(height: 20),
@@ -70,8 +153,8 @@ class NutritionistDetailScreen extends StatelessWidget {
                       _buildInfoSection(
                         title: "Expertise & Specialties",
                         content:
-                            data['specialty'] ??
-                            'Clinical Nutrition, Dietetics & Wellness',
+                            widget.expert.specialization ??
+                            'Clinical Nutrition & Wellness',
                         icon: Icons.verified_rounded,
                       ),
                       const SizedBox(height: 20),
@@ -80,7 +163,6 @@ class NutritionistDetailScreen extends StatelessWidget {
                       _buildInfoSection(
                         title: "About",
                         content:
-                            data['bio'] ??
                             "Dedicated and certified nutrition specialist with a proven track record of helping clients achieve sustainable health, weight management, and metabolic well-being through personalized, evidence-based meal plans.",
                         icon: Icons.info_outline_rounded,
                       ),
@@ -93,11 +175,11 @@ class NutritionistDetailScreen extends StatelessWidget {
           },
         ),
       ),
-      bottomNavigationBar: _buildBottomActionBar(data),
+      bottomNavigationBar: _buildBottomActionBar(),
     );
   }
 
-  Widget _buildProfileHeader(Map<String, dynamic> data) {
+  Widget _buildProfileHeader() {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -117,9 +199,12 @@ class NutritionistDetailScreen extends StatelessWidget {
           CircleAvatar(
             radius: 38,
             backgroundColor: AppColors.background,
-            backgroundImage: AssetImage(
-              data['image'] ?? 'assets/images/Profile.png',
-            ),
+            backgroundImage:
+                widget.expert.imageUrl != null &&
+                    widget.expert.imageUrl!.isNotEmpty
+                ? NetworkImage(widget.expert.imageUrl!)
+                : const AssetImage('assets/images/Profile.png')
+                      as ImageProvider,
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -127,7 +212,7 @@ class NutritionistDetailScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  data['name'] ?? '',
+                  widget.expert.name,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.bold,
@@ -136,7 +221,7 @@ class NutritionistDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  data['specialty'] ?? '',
+                  widget.expert.specialization ?? 'Specialist',
                   style: const TextStyle(
                     color: AppColors.primary,
                     fontSize: 13.5,
@@ -195,7 +280,7 @@ class NutritionistDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomActionBar(Map<String, dynamic> data) {
+  Widget _buildBottomActionBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       decoration: BoxDecoration(
@@ -209,17 +294,7 @@ class NutritionistDetailScreen extends StatelessWidget {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: () {
-              Get.snackbar(
-                "Consultation Started",
-                "Connecting with ${data['name']}...",
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: AppColors.surface,
-                colorText: AppColors.textPrimary,
-                margin: const EdgeInsets.all(16),
-                borderRadius: 14,
-              );
-            },
+            onPressed: _showConsultDialog,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.black,

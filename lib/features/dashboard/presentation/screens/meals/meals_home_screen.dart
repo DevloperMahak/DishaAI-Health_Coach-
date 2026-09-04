@@ -27,6 +27,10 @@ class _MealsHomeScreenState extends State<MealsHomeScreen> {
   bool _isFavorite = false;
   bool _isLoadingScan = false;
 
+  // New Tracking fields for Food Logging payload
+  String? _scannedMasterFoodId;
+  bool _scannedIsVerified = false;
+
   // Safe inline initialization to prevent LateInitializationError
   late MealSession _currentMeal =
       widget.meal ??
@@ -135,6 +139,10 @@ class _MealsHomeScreenState extends State<MealsHomeScreen> {
 
     await Future.delayed(const Duration(milliseconds: 800));
 
+    // Manual Entry: Reset master_food_id to null and is_verified to false
+    _scannedMasterFoodId = null;
+    _scannedIsVerified = false;
+
     setState(() {
       _isLoadingScan = false;
       _currentMeal = MealSession(
@@ -184,6 +192,10 @@ class _MealsHomeScreenState extends State<MealsHomeScreen> {
     if (data is Map<String, dynamic>) {
       mapData = data['food'] is Map ? data['food'] : data;
     }
+
+    // Extract master_food_id and is_verified from scanner response API
+    _scannedMasterFoodId = mapData['master_food_id']?.toString();
+    _scannedIsVerified = mapData['is_verified'] ?? true;
 
     setState(() {
       _currentMeal = MealSession(
@@ -263,22 +275,61 @@ class _MealsHomeScreenState extends State<MealsHomeScreen> {
     );
   }
 
-  void _logMeal() {
-    setState(() {
-      _isLogged = true;
-    });
-    Get.snackbar(
-      'Meal Logged',
-      '${_currentMeal.name} has been added to today\'s nutrition.',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: AppColors.surface,
-      colorText: AppColors.textPrimary,
-      margin: const EdgeInsets.all(16),
-      icon: const Icon(
-        Icons.check_circle_outline_rounded,
-        color: AppColors.primary,
-      ),
+  Future<void> _logMeal() async {
+    final String formattedDate = DateTime.now().toIso8601String().split('T')[0];
+
+    // Normalize meal type to match backend accepted values (e.g., breakfast, lunch, dinner, snack)
+    String normalizedMealType = _currentMeal.mealType.toLowerCase();
+    if (![
+      'breakfast',
+      'lunch',
+      'dinner',
+      'snack',
+    ].contains(normalizedMealType)) {
+      normalizedMealType =
+          'snack'; // Fallback default if AI returns "AI Scan" or "AI Search"
+    }
+
+    final success = await _aiController.logFood(
+      foodName: _currentMeal.name,
+      mealType: normalizedMealType, // Use the cleaned/normalized meal type
+      calories: num.tryParse(_currentMeal.calories) ?? 0,
+      protein: num.tryParse(_currentMeal.protein) ?? 0,
+      carbs: num.tryParse(_currentMeal.carbs) ?? 0,
+      fat: num.tryParse(_currentMeal.fat) ?? 0,
+      servingSize: _currentMeal.servingSize,
+      date: formattedDate,
+      masterFoodId: _scannedMasterFoodId,
+      isVerified: _scannedIsVerified,
     );
+
+    if (success) {
+      setState(() {
+        _isLogged = true;
+      });
+      Get.snackbar(
+        'Meal Logged',
+        '${_currentMeal.name} has been added to today\'s nutrition.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.surface,
+        colorText: AppColors.textPrimary,
+        margin: const EdgeInsets.all(16),
+        icon: const Icon(
+          Icons.check_circle_outline_rounded,
+          color: AppColors.primary,
+        ),
+      );
+    } else {
+      Get.snackbar(
+        'Error',
+        _aiController.errorMessage.value.isNotEmpty
+            ? _aiController.errorMessage.value
+            : 'Failed to log meal.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.redAccent,
+        colorText: Colors.white,
+      );
+    }
   }
 
   void _toggleFavorite() {
@@ -847,17 +898,30 @@ class _MealsHomeScreenState extends State<MealsHomeScreen> {
   }
 
   Widget _buildActionButtons(double scale) {
-    return ElevatedButton(
-      onPressed: _logMeal,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.black,
-        minimumSize: const Size(double.infinity, 50),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: Text(
-        _isLogged ? "Meal Logged Successfully" : "Log This Meal",
-        style: const TextStyle(fontWeight: FontWeight.w700),
+    return Obx(
+      () => ElevatedButton(
+        onPressed: _aiController.isLoggingFood.value ? null : _logMeal,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.black,
+          minimumSize: const Size(double.infinity, 50),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: _aiController.isLoggingFood.value
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.black,
+                  strokeWidth: 2,
+                ),
+              )
+            : Text(
+                _isLogged ? "Meal Logged Successfully" : "Log This Meal",
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
       ),
     );
   }

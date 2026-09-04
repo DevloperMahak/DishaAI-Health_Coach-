@@ -63,6 +63,15 @@ class DashboardDrawer extends StatelessWidget {
       subtitle: 'Health Journey',
       icon: Icons.bar_chart_rounded,
     ),
+    // <-- UPGRADE TO PREMIUM ADDED HERE IN DRAWER -->
+    _DrawerItemData(
+      title: 'Upgrade to Premium',
+      subtitle: 'Unlock AI Power',
+      icon: Icons.workspace_premium_rounded,
+      isRouteCustom: true,
+      route: AppRoutes
+          .upgradePremium, // Ensure this route is declared in AppRoutes
+    ),
     _DrawerItemData(
       title: 'Notifications',
       icon: Icons.notifications_none_rounded,
@@ -294,7 +303,6 @@ class DashboardDrawer extends StatelessWidget {
 
                         const SizedBox(height: 4),
 
-                        // 💡 DYNAMIC EMAIL SECTION USING Obx
                         Obx(() {
                           final profileEmail =
                               _healthController.healthProfile.value?.email;
@@ -380,7 +388,12 @@ class DashboardDrawer extends StatelessWidget {
                         }
 
                         Navigator.of(context).pop();
-                        onItemTap(index);
+
+                        if (item.isRouteCustom && item.route != null) {
+                          Get.toNamed(item.route!);
+                        } else {
+                          onItemTap(index);
+                        }
                       },
                     ),
                   );
@@ -425,11 +438,15 @@ class _DrawerItemData {
   final String? subtitle;
   final IconData icon;
   final bool isLogout;
+  final bool isRouteCustom;
+  final String? route;
 
   const _DrawerItemData({
     required this.title,
     required this.icon,
     this.subtitle,
     this.isLogout = false,
+    this.isRouteCustom = false,
+    this.route,
   });
 }

@@ -1,4 +1,5 @@
 import 'package:disha_ai/features/onboarding/presentation/controllers/health_nutrition_controller.dart';
+import 'package:disha_ai/features/payment/presentation/controllers/premium_report_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -16,7 +17,6 @@ import 'package:disha_ai/features/progress/presentation/widgets/weekly_goal_prog
 import 'package:disha_ai/features/progress/presentation/widgets/weight_progress_card.dart';
 import 'package:disha_ai/features/progress/presentation/widgets/weight_progress_chart.dart';
 import 'package:fl_chart/fl_chart.dart';
-
 import '../widgets/progress_header.dart';
 import '../widgets/achievement_section.dart';
 
@@ -37,9 +37,14 @@ class _ProgressScreenState extends State<ProgressScreen> {
   );
   final HealthNutritionController _healthNutritionController = Get.put(
     HealthNutritionController(),
-  ); // <--- Initialized
+  );
+  final PremiumReportController _premiumReportController = Get.put(
+    PremiumReportController(),
+  ); // <--- Initialized for Weekly & Monthly AI Reports
 
   int _currentIndex = 2;
+  String _selectedPeriod =
+      "This Week"; // Tracks selected period (This Week vs This Month)
 
   @override
   void initState() {
@@ -53,8 +58,9 @@ class _ProgressScreenState extends State<ProgressScreen> {
     await Future.wait([
       _healthProfileController.getHealthProfile(),
       _aiController.analyzeProfile(),
-      _healthNutritionController
-          .fetchAllData(), // <--- Fetches live health logs and nutrition
+      _healthNutritionController.fetchAllData(),
+      _premiumReportController
+          .fetchReports(), // <--- Fetches live weekly/monthly JSON reports from backend
     ]);
   }
 
@@ -90,7 +96,6 @@ class _ProgressScreenState extends State<ProgressScreen> {
   }
 
   double get _currentWeight {
-    // Prioritize live health logs weight if available, else fallback to profile
     final logWeight = _healthNutritionController.healthLog.value?.weightKg;
     if (logWeight != null && logWeight > 0) return logWeight;
 
@@ -105,6 +110,14 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
   double get _startingWeight {
     return _currentWeight + 4.0;
+  }
+
+  // Dynamically bind Overall Health Score based on selected period (Weekly vs Monthly report API)
+  int get _dynamicHealthScore {
+    final report = _selectedPeriod == "This Week"
+        ? _premiumReportController.weeklyReport.value
+        : _premiumReportController.monthlyReport.value;
+    return (report?.healthScore ?? 87).toInt();
   }
 
   // ============================================================
@@ -171,10 +184,14 @@ class _ProgressScreenState extends State<ProgressScreen> {
                     padding: EdgeInsets.fromLTRB(padding, 18, padding, 28),
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
-                        // TOP BAR
+                        // TOP BAR WITH PERIOD SWITCHER (This Week / This Month)
                         ProgressAppBar(
-                          selectedPeriod: "This Week",
-                          onPeriodChanged: (value) {},
+                          selectedPeriod: _selectedPeriod,
+                          onPeriodChanged: (value) {
+                            setState(() {
+                              _selectedPeriod = value;
+                            });
+                          },
                         ),
 
                         const SizedBox(height: 26),
@@ -223,16 +240,20 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
                         const SizedBox(height: 18),
 
-                        // OVERALL HEALTH SCORE CARD
-                        const OverallHealthScoreCard(
-                          healthScore: 87,
-                          weeklyImprovement: 6,
-                          status: "Excellent",
+                        // DYNAMIC OVERALL HEALTH SCORE CARD (Connected to API Reports)
+                        Obx(
+                          () => OverallHealthScoreCard(
+                            healthScore: _dynamicHealthScore,
+                            weeklyImprovement: 6,
+                            status: _dynamicHealthScore >= 80
+                                ? "Excellent"
+                                : "Good",
+                          ),
                         ),
 
                         const SizedBox(height: 22),
 
-                        // WEEKLY GOALS (Connected via controller data if needed)
+                        // WEEKLY GOALS
                         WeeklyGoalProgress(
                           goals: const [
                             WeeklyGoalModel(
@@ -272,7 +293,58 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
                         const SizedBox(height: 22),
 
-                        const ProgressInsightsCard(),
+                        // DYNAMIC AI PROGRESS INSIGHTS (Pulling AI Insights from Backend Report API)
+                        Obx(() {
+                          final report = _selectedPeriod == "This Week"
+                              ? _premiumReportController.weeklyReport.value
+                              : _premiumReportController.monthlyReport.value;
+
+                          if (report != null && report.aiInsights.isNotEmpty) {
+                            return Container(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: AppColors.primary.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.auto_awesome_rounded,
+                                        color: AppColors.primary,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "$_selectedPeriod AI Health Insights",
+                                        style: const TextStyle(
+                                          color: AppColors.textPrimary,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    report.aiInsights,
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 13.5,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          return const ProgressInsightsCard();
+                        }),
 
                         const SizedBox(height: 40),
                       ]),

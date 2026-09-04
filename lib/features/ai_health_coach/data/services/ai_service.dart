@@ -70,6 +70,40 @@ class AiService {
   }
 
   // ============================================================
+  // 3B. LOG FOOD (NEW ADDITION)
+  // ============================================================
+  Future<AiResponseModel> logFood({
+    required String foodName,
+    required String mealType,
+    required num calories,
+    required num protein,
+    required num carbs,
+    required num fat,
+    required String servingSize,
+    required String date,
+    String? masterFoodId, // <-- New Field
+    required bool isVerified, // <-- New Field
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiConstants.baseUrl}/food-log'),
+      headers: _headers(),
+      body: jsonEncode({
+        'food_name': foodName,
+        'meal_type': mealType,
+        'calories': calories,
+        'protein_g': protein,
+        'carbs_g': carbs,
+        'fat_g': fat,
+        'serving_size': servingSize,
+        'date': date,
+        'master_food_id': masterFoodId, // null if manual, or ID if scanned
+        'is_verified': isVerified, // false if manual, true/false from scanner
+      }),
+    );
+    return _handleResponse(response, 'Log Food');
+  }
+
+  // ============================================================
   // 4. AI VITALS ANALYSIS
   // ============================================================
   Future<AiResponseModel> analyzeVitals() async {

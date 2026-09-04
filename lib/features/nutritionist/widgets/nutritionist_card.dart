@@ -1,12 +1,13 @@
+import 'package:disha_ai/features/nutritionist/data/models/expert_model.dart';
 import 'package:disha_ai/features/nutritionist/presentation/screens/nutritionist_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../../app/theme/app_colors.dart';
 
 class NutritionistCard extends StatelessWidget {
-  const NutritionistCard({super.key, required this.data});
+  const NutritionistCard({super.key, required this.expert});
 
-  final Map<String, dynamic> data;
+  final ExpertModel expert;
 
   @override
   Widget build(BuildContext context) {
@@ -31,34 +32,15 @@ class NutritionistCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: AppColors.background,
-                    backgroundImage: AssetImage(
-                      data['image'] ?? 'assets/images/Profile.png',
-                    ),
-                    onBackgroundImageError: (_, __) {},
-                  ),
-                  if (data['isAvailable'] == true)
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.greenAccent,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.surface,
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.background,
+                backgroundImage:
+                    expert.imageUrl != null && expert.imageUrl!.isNotEmpty
+                    ? NetworkImage(expert.imageUrl!)
+                    : const AssetImage('assets/images/Profile.png')
+                          as ImageProvider,
+                onBackgroundImageError: (_, __) {},
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -66,7 +48,7 @@ class NutritionistCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      data['name'] ?? '',
+                      expert.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -77,21 +59,15 @@ class NutritionistCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      data['specialty'] ?? '',
+                      expert.specialization ??
+                          expert.designation ??
+                          'Health Specialist',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppColors.primary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      data['experience'] ?? '',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -106,7 +82,7 @@ class NutritionistCard extends StatelessWidget {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
-                Get.to(() => NutritionistDetailScreen(nutritionistData: data));
+                Get.to(() => NutritionistDetailScreen(expert: expert));
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,

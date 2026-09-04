@@ -83,6 +83,8 @@ class AppRoutes {
 
   static const String journeyAhead = '/journey-ahead';
 
+  static const String upgradePremium = '/upgrade-premium';
+
   // ============================================================
   // AI HEALTH COACH
   // ============================================================

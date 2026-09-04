@@ -134,6 +134,49 @@ class AiController extends GetxController {
   }
 
   // ============================================================
+  // 14. LOG FOOD (NEW ADDITION)
+  // ============================================================
+  final RxBool isLoggingFood = false.obs;
+  final Rxn<AiResponseModel> foodLogResponse = Rxn<AiResponseModel>();
+
+  Future<bool> logFood({
+    required String foodName,
+    required String mealType,
+    required num calories,
+    required num protein,
+    required num carbs,
+    required num fat,
+    required String servingSize,
+    required String date,
+    String? masterFoodId,
+    required bool isVerified,
+  }) async {
+    try {
+      isLoggingFood.value = true;
+      errorMessage.value = '';
+      final result = await _service.logFood(
+        foodName: foodName,
+        mealType: mealType,
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fat: fat,
+        servingSize: servingSize,
+        date: date,
+        masterFoodId: masterFoodId,
+        isVerified: isVerified,
+      );
+      foodLogResponse.value = result;
+      return true;
+    } catch (e) {
+      errorMessage.value = _cleanError(e);
+      return false;
+    } finally {
+      isLoggingFood.value = false;
+    }
+  }
+
+  // ============================================================
   // 4. AI VITALS ANALYSIS
   // ============================================================
   Future<bool> analyzeVitals() async {

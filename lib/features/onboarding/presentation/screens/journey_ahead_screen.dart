@@ -1,3 +1,4 @@
+import 'package:disha_ai/features/payment/presentation/controllers/premium_report_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -7,15 +8,10 @@ import '../../../../app/theme/app_colors.dart';
 class JourneyAheadScreen extends StatelessWidget {
   const JourneyAheadScreen({super.key});
 
-  // ============================================================
-  // NAVIGATION TO DASHBOARD
-  // ============================================================
-  void _navigateToDashboard() {
-    Get.offAllNamed(AppRoutes.dashboard);
-  }
-
   @override
   Widget build(BuildContext context) {
+    final controller = Get.put(PremiumReportController());
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -143,7 +139,7 @@ class JourneyAheadScreen extends StatelessWidget {
                 ),
 
                 // ==========================================
-                // STICKY BOTTOM BUTTON BAR
+                // STICKY BOTTOM BUTTON BAR WITH RAZORPAY PAYMENT & DASHBOARD REDIRECTION
                 // ==========================================
                 Container(
                   padding: EdgeInsets.symmetric(
@@ -163,29 +159,56 @@ class JourneyAheadScreen extends StatelessWidget {
                     child: SizedBox(
                       width: double.infinity,
                       height: isTablet ? 58 : 52,
-                      child: ElevatedButton(
-                        onPressed: _navigateToDashboard,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.black,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              "Try for 3 days",
-                              style: TextStyle(
-                                fontSize: isTablet ? 18 : 16,
-                                fontWeight: FontWeight.bold,
-                              ),
+                      child: Obx(
+                        () => ElevatedButton(
+                          onPressed: controller.isSubscribing.value
+                              ? null
+                              : () async {
+                                  // Call subscription flow.
+                                  // Inside PremiumReportController, after successful verification,
+                                  // it navigates to Dashboard or you can handle it via callback / success check.
+                                  await controller.startSubscription();
+
+                                  // Optional: If you want to force navigate on success after payment popup finishes
+                                  if (controller.errorMessage.value.isEmpty &&
+                                      !controller.isSubscribing.value) {
+                                    // Get.offAllNamed(AppRoutes.dashboard);
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.black,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            const SizedBox(width: 8),
-                            const Icon(Icons.arrow_forward_rounded, size: 20),
-                          ],
+                          ),
+                          child: controller.isSubscribing.value
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.black,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      "Try for 3 days",
+                                      style: TextStyle(
+                                        fontSize: isTablet ? 18 : 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(
+                                      Icons.arrow_forward_rounded,
+                                      size: 20,
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
                     ),

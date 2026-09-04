@@ -45,7 +45,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfileData() async {
-    // 💡 Fetch both profile and health profile to keep them updated
     await Future.wait([
       _profileController.fetchProfile(),
       _healthProfileController.getHealthProfile(),
@@ -228,9 +227,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Row(
         children: [
-          // ==========================================
-          // PERSISTENT PROFILE PHOTO
-          // ==========================================
           Obx(() {
             final apiProfile = _profileController.profile.value;
             String? photoPath = apiProfile?.profilePhoto;
@@ -275,10 +271,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
           }),
           const SizedBox(width: 15),
-
-          // ==========================================
-          // 💡 API PROFILE FIRST PRIORITY FOR INSTANT UPDATE
-          // ==========================================
           Expanded(
             child: Obx(() {
               final apiProfile = _profileController.profile.value;
@@ -345,12 +337,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             }),
           ),
-
           InkWell(
             borderRadius: BorderRadius.circular(30),
             onTap: () async {
               await Get.toNamed(AppRoutes.editPersonalInfo);
-              _loadProfileData(); // Reloads profile data instantly on return
+              _loadProfileData();
             },
             child: Container(
               padding: const EdgeInsets.all(8),
@@ -424,6 +415,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _menuCard(BuildContext context, bool tablet) {
     final items = [
+      [
+        Icons.workspace_premium,
+        "Upgrade to Premium",
+      ], // <-- ADDED HERE IN PROFILE
       [Icons.person, "Personal Information"],
       [Icons.health_and_safety, "Connect Data"],
       [Icons.bar_chart, "Health Data"],
@@ -454,16 +449,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () async {
                 switch (index) {
                   case 0:
+                    Get.toNamed(AppRoutes.upgradePremium); // <-- ROUTE NAVIGATE
+                    break;
+                  case 1:
                     await Get.toNamed(AppRoutes.editPersonalInfo);
                     _loadProfileData();
                     break;
-                  case 1:
+                  case 2:
                     Get.toNamed(AppRoutes.settings);
                     break;
-                  case 2:
+                  case 3:
                     Get.toNamed(AppRoutes.editHealthInfo);
                     break;
-                  case 3:
+                  case 4:
                     Get.toNamed(AppRoutes.notifications);
                     break;
                 }

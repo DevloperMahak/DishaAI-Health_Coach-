@@ -1,7 +1,8 @@
-import 'package:disha_ai/features/nutritionist/widgets/nutritionist_card.dart';
+import 'package:disha_ai/features/nutritionist/presentation/controllers/expert_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../widgets/nutritionist_card.dart';
 
 class NutritionistListScreen extends StatefulWidget {
   const NutritionistListScreen({super.key});
@@ -11,79 +12,14 @@ class NutritionistListScreen extends StatefulWidget {
 }
 
 class _NutritionistListScreenState extends State<NutritionistListScreen> {
+  final ExpertController _expertController = Get.put(ExpertController());
   final TextEditingController _searchController = TextEditingController();
   String _selectedCategory = 'All';
-
-  final List<Map<String, dynamic>> _nutritionists = [
-    {
-      'id': '1',
-      'name': 'Dr. Ananya Sharma',
-      'specialty': 'Clinical Nutrition & Diabetes',
-      'experience': '8+ Years Exp',
-      'rating': 4.9,
-      'reviews': 124,
-      'fee': '₹800 / session',
-      'image': 'assets/images/Profile.png',
-      'category': 'Clinical',
-      'isAvailable': true,
-    },
-    {
-      'id': '2',
-      'name': 'Rahul Verma',
-      'specialty': 'Sports Dietetics & Muscle Building',
-      'experience': '6+ Years Exp',
-      'rating': 4.8,
-      'reviews': 98,
-      'fee': '₹650 / session',
-      'image': 'assets/images/Profile.png',
-      'category': 'Sports',
-      'isAvailable': true,
-    },
-    {
-      'id': '3',
-      'name': 'Priya Nair',
-      'specialty': 'Weight Management & PCOD',
-      'experience': '7+ Years Exp',
-      'rating': 4.9,
-      'reviews': 156,
-      'fee': '₹750 / session',
-      'image': 'assets/images/Profile.png',
-      'category': 'Weight Loss',
-      'isAvailable': false,
-    },
-    {
-      'id': '4',
-      'name': 'Dr. Vikram Malhotra',
-      'specialty': 'Holistic Wellness & Gut Health',
-      'experience': '10+ Years Exp',
-      'rating': 5.0,
-      'reviews': 210,
-      'fee': '₹1,000 / session',
-      'image': 'assets/images/Profile.png',
-      'category': 'Holistic',
-      'isAvailable': true,
-    },
-  ];
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  List<Map<String, dynamic>> _getFilteredList() {
-    final query = _searchController.text.trim().toLowerCase();
-    return _nutritionists.where((item) {
-      final name = item['name'].toString().toLowerCase();
-      final specialty = item['specialty'].toString().toLowerCase();
-      final cat = item['category'].toString();
-
-      final matchesQuery = name.contains(query) || specialty.contains(query);
-      final matchesCategory =
-          _selectedCategory == 'All' || cat == _selectedCategory;
-
-      return matchesQuery && matchesCategory;
-    }).toList();
   }
 
   @override
@@ -115,46 +51,98 @@ class _NutritionistListScreenState extends State<NutritionistListScreen> {
             final width = constraints.maxWidth;
             final isTablet = width >= 700;
             final horizontalPadding = isTablet ? width * 0.12 : 20.0;
-            final filteredList = _getFilteredList();
 
-            return SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.symmetric(
-                horizontal: horizontalPadding,
-                vertical: 16,
-              ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 900),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Search Bar
-                      _buildSearchBar(),
-                      const SizedBox(height: 20),
+            return RefreshIndicator(
+              color: AppColors.primary,
+              onRefresh: () => _expertController.fetchExperts(),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 16,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Search Bar
+                        _buildSearchBar(),
+                        const SizedBox(height: 20),
 
-                      // Category Filters
-                      _buildCategoryChips(),
-                      const SizedBox(height: 24),
+                        // Category Filters
+                        _buildCategoryChips(),
+                        const SizedBox(height: 24),
 
-                      // Section Heading
-                      const Text(
-                        "Available Specialists",
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        // Section Heading
+                        const Text(
+                          "Available Specialists",
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
+                        const SizedBox(height: 14),
 
-                      // Safe List / Grid Implementation
-                      filteredList.isEmpty
-                          ? _buildEmptyState()
-                          : isTablet
-                          ? _buildTabletGrid(filteredList)
-                          : _buildMobileList(filteredList),
-                    ],
+                        // Obx API State Builder
+                        Obx(() {
+                          if (_expertController.isExpertsLoading.value &&
+                              _expertController.expertsList.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 60),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final query = _searchController.text
+                              .trim()
+                              .toLowerCase();
+                          final filteredList = _expertController.expertsList.where((
+                            expert,
+                          ) {
+                            final name = expert.name.toLowerCase();
+                            final specialty = (expert.specialization ?? '')
+                                .toLowerCase();
+                            final designation = (expert.designation ?? '')
+                                .toLowerCase();
+
+                            final matchesQuery =
+                                name.contains(query) ||
+                                specialty.contains(query) ||
+                                designation.contains(query);
+
+                            // Add category filtering here if your backend exposes categories,
+                            // otherwise match all or check specialty keywords.
+                            final matchesCategory =
+                                _selectedCategory == 'All' ||
+                                specialty.contains(
+                                  _selectedCategory.toLowerCase(),
+                                ) ||
+                                designation.contains(
+                                  _selectedCategory.toLowerCase(),
+                                );
+
+                            return matchesQuery && matchesCategory;
+                          }).toList();
+
+                          if (filteredList.isEmpty) {
+                            return _buildEmptyState();
+                          }
+
+                          return isTablet
+                              ? _buildTabletGrid(filteredList)
+                              : _buildMobileList(filteredList);
+                        }),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -182,7 +170,7 @@ class _NutritionistListScreenState extends State<NutritionistListScreen> {
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
-        onChanged: (value) {
+        onChanged: (_) {
           setState(() {});
         },
       ),
@@ -190,7 +178,7 @@ class _NutritionistListScreenState extends State<NutritionistListScreen> {
   }
 
   Widget _buildCategoryChips() {
-    final categories = ['All', 'Clinical', 'Sports', 'Weight Loss', 'Holistic'];
+    final categories = ['All', 'Clinical', 'Sports', 'Weight', 'Holistic'];
 
     return SizedBox(
       height: 38,
@@ -228,21 +216,19 @@ class _NutritionistListScreenState extends State<NutritionistListScreen> {
     );
   }
 
-  Widget _buildMobileList(List<Map<String, dynamic>> list) {
+  Widget _buildMobileList(List list) {
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: list.length,
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
-        return NutritionistCard(
-          data: list[index],
-        ); // 💡 Using separate card widget
+        return NutritionistCard(expert: list[index]);
       },
     );
   }
 
-  Widget _buildTabletGrid(List<Map<String, dynamic>> list) {
+  Widget _buildTabletGrid(List list) {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -254,9 +240,7 @@ class _NutritionistListScreenState extends State<NutritionistListScreen> {
       ),
       itemCount: list.length,
       itemBuilder: (context, index) {
-        return NutritionistCard(
-          data: list[index],
-        ); // 💡 Using separate card widget
+        return NutritionistCard(expert: list[index]);
       },
     );
   }

@@ -13,6 +13,7 @@ import 'package:disha_ai/features/meditation/presentation/screens/meditation_hom
 import 'package:disha_ai/features/nutritionist/presentation/screens/nutritionist_screen.dart';
 import 'package:disha_ai/features/onboarding/data/binding/health_profile_binding.dart';
 import 'package:disha_ai/features/onboarding/presentation/screens/journey_ahead_screen.dart';
+import 'package:disha_ai/features/payment/presentation/screens/upgrade_premium_screen.dart';
 import 'package:disha_ai/features/profile/presentation/screens/connect_health_data_screen.dart';
 import 'package:disha_ai/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:disha_ai/features/notifications/presentation/screens/notification_screen.dart';
@@ -246,6 +247,11 @@ class AppPages {
     GetPage(
       name: AppRoutes.contactNutritionist,
       page: () => const NutritionistListScreen(),
+      transition: Transition.cupertino,
+    ),
+    GetPage(
+      name: AppRoutes.upgradePremium,
+      page: () => const UpgradePremiumScreen(),
       transition: Transition.cupertino,
     ),
   ];
