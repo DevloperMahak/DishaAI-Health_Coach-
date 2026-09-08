@@ -290,24 +290,52 @@ class _NutritionistDetailScreenState extends State<NutritionistDetailScreen> {
         ),
       ),
       child: SafeArea(
-        child: SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            onPressed: _showConsultDialog,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.black,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+        child: Row(
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Consultation Fee",
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.expert.fee ?? '₹750 / session',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _showConsultDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    "Consult Now",
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
               ),
             ),
-            child: const Text(
-              "Consult Now",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-            ),
-          ),
+          ],
         ),
       ),
     );

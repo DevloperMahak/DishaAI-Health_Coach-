@@ -83,7 +83,12 @@ class DashboardDrawer extends StatelessWidget {
       subtitle: 'Terms',
       icon: Icons.privacy_tip_outlined,
     ),
-    _DrawerItemData(title: 'Rate App', icon: Icons.star_outline_rounded),
+    _DrawerItemData(
+      title: 'Rate App',
+      icon: Icons.star_outline_rounded,
+      isRouteCustom: true,
+      route: AppRoutes.review,
+    ),
     _DrawerItemData(
       title: 'Logout',
       icon: Icons.logout_rounded,

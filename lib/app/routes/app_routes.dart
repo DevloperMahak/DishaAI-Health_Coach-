@@ -134,6 +134,8 @@ class AppRoutes {
 
   static const String privacy = '/privacy';
 
+  static const String review = '/review';
+
   // ============================================================
   // FALLBACK
   // ============================================================

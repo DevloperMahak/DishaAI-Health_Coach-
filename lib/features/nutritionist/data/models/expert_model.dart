@@ -5,6 +5,7 @@ class ExpertModel {
   final String? specialization;
   final String? imageUrl;
   final double? rating;
+  final String? fee; // 💡 Added fee field
 
   ExpertModel({
     required this.id,
@@ -13,6 +14,7 @@ class ExpertModel {
     this.specialization,
     this.imageUrl,
     this.rating,
+    this.fee,
   });
 
   factory ExpertModel.fromJson(Map<String, dynamic> json) {
@@ -25,6 +27,9 @@ class ExpertModel {
       rating: json['rating'] != null
           ? double.tryParse(json['rating'].toString())
           : 0.0,
+      fee:
+          json['fee']?.toString() ??
+          '₹750 / session', // 💡 Fallback fee if missing in API
     );
   }
 }

@@ -78,26 +78,39 @@ class NutritionistCard extends StatelessWidget {
           const SizedBox(height: 12),
           Divider(color: AppColors.primary.withOpacity(.1), height: 1),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Get.to(() => NutritionistDetailScreen(expert: expert));
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.black,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                expert.fee ?? '₹750 / session',
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12.5,
                 ),
               ),
-              child: const Text(
-                "Consult Now",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+              ElevatedButton(
+                onPressed: () {
+                  Get.to(() => NutritionistDetailScreen(expert: expert));
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text(
+                  "Consult Now",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),

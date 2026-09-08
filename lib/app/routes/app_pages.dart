@@ -33,6 +33,7 @@ import 'package:disha_ai/features/profile/presentation/screens/edit_information_
 import 'package:disha_ai/features/profile/presentation/screens/edit_personal_information_screen.dart';
 import 'package:disha_ai/features/profile/presentation/screens/microphone_access_screen.dart';
 import 'package:disha_ai/features/profile/presentation/screens/profile_screen.dart';
+import 'package:disha_ai/features/profile/presentation/screens/review_screen.dart';
 import 'package:disha_ai/features/profile/presentation/screens/settings_screen.dart';
 import 'package:disha_ai/features/progress/presentation/screens/progress_screen.dart';
 import 'package:disha_ai/features/water_tracker/presentation/screens/water_tracker_screen.dart';
@@ -252,6 +253,11 @@ class AppPages {
     GetPage(
       name: AppRoutes.upgradePremium,
       page: () => const UpgradePremiumScreen(),
+      transition: Transition.cupertino,
+    ),
+    GetPage(
+      name: AppRoutes.review,
+      page: () => const ReviewScreen(),
       transition: Transition.cupertino,
     ),
   ];
