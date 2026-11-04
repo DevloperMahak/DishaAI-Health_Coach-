@@ -1,12 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../controllers/rhea_live_call_controller.dart';
 
 class RheaCheckInCallScreen extends StatefulWidget {
-  const RheaCheckInCallScreen({super.key, this.onEndCall});
-
-  final VoidCallback? onEndCall;
+  const RheaCheckInCallScreen({super.key});
 
   @override
   State<RheaCheckInCallScreen> createState() => _RheaCheckInCallScreenState();
@@ -14,694 +16,579 @@ class RheaCheckInCallScreen extends StatefulWidget {
 
 class _RheaCheckInCallScreenState extends State<RheaCheckInCallScreen>
     with SingleTickerProviderStateMixin {
-  // ==============================================================
-  // STATE
-  // ==============================================================
+  late final RheaLiveCallController _liveController;
+  late final AnimationController _pulseController;
 
-  bool isMuted = false;
-  bool isSpeakerOn = true;
+  final List<Worker> _workers = [];
 
-  bool isRheaSpeaking = true;
+  bool _isEnding = false;
+  bool _endRequested = false;
+  bool _allowPop = false;
+  bool _isInitializing = false;
+  bool _isTogglingMute = false;
+  bool _cleanupStarted = false;
+  Future<void> _wakeLockOperation = Future<void>.value();
 
-  Duration callDuration = Duration.zero;
+  RheaLiveCallStatus get _status => _liveController.status.value;
 
-  late AnimationController _pulseController;
+  bool get _isStarting =>
+      _status == RheaLiveCallStatus.connecting ||
+      _status == RheaLiveCallStatus.reconnecting;
 
-  // ==============================================================
-  // INIT
-  // ==============================================================
+  bool get _sessionStarted => _status == RheaLiveCallStatus.connected;
+
+  bool get _microphoneMuted => _liveController.isMuted.value;
+
+  bool get _isSpeaking => _liveController.isRheaSpeaking.value;
+
+  bool get _isListening => _sessionStarted && !_microphoneMuted && !_isSpeaking;
+
+  String get _statusText {
+    if (_isEnding || _status == RheaLiveCallStatus.ending) {
+      return 'Ending call...';
+    }
+
+    switch (_status) {
+      case RheaLiveCallStatus.idle:
+        return 'Preparing call...';
+      case RheaLiveCallStatus.connecting:
+        return 'Connecting to Rhea...';
+      case RheaLiveCallStatus.connected:
+        if (_microphoneMuted) return 'Microphone muted';
+        if (_isSpeaking) return 'Rhea is speaking';
+        return 'Listening';
+      case RheaLiveCallStatus.reconnecting:
+        return 'Reconnecting to Rhea...';
+      case RheaLiveCallStatus.ending:
+        return 'Ending call...';
+      case RheaLiveCallStatus.ended:
+        return 'Call ended';
+      case RheaLiveCallStatus.failed:
+        return 'Unable to connect';
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+
+    unawaited(_setScreenAwake(true));
+
+    _liveController = Get.put(RheaLiveCallController(), tag: 'rhea_live_call');
 
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    _startTimer();
-  }
+    _workers.addAll([
+      ever(_liveController.status, (_) => _refresh()),
+      ever(_liveController.isMuted, (_) => _refresh()),
+      ever(_liveController.isRheaSpeaking, (_) => _refresh()),
+      ever(_liveController.elapsedSeconds, (_) => _refresh()),
+      ever(_liveController.errorMessage, (message) {
+        if (!mounted || _isEnding || message.trim().isEmpty) return;
+        _showError(message);
+      }),
+    ]);
 
-  // ==============================================================
-  // DISPOSE
-  // ==============================================================
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  // ==============================================================
-  // TIMER
-  // ==============================================================
-
-  void _startTimer() {
-    Stream.periodic(const Duration(seconds: 1)).listen((_) {
-      if (!mounted) return;
-
-      setState(() {
-        callDuration += const Duration(seconds: 1);
-      });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_isEnding) {
+        unawaited(_initializeCall());
+      }
     });
   }
 
-  // ==============================================================
-  // BUILD
-  // ==============================================================
+  // Serialize wake-lock changes so a late enable cannot override disable.
+  Future<void> _setScreenAwake(bool enabled) {
+    _wakeLockOperation = _wakeLockOperation.then((_) async {
+      try {
+        if (enabled) {
+          // If the route was disposed before this operation runs, skip it.
+          if (!mounted || _isEnding) return;
+          await WakelockPlus.enable();
+        } else {
+          await WakelockPlus.disable();
+        }
+      } catch (error) {
+        debugPrint('RHEA LIVE: Screen wake lock error: $error');
+      }
+    });
+    return _wakeLockOperation;
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final isDesktop = width >= 700;
+  void _refresh() {
+    if (mounted && !_isEnding) {
+      setState(() {});
+    }
+  }
 
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 850),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isDesktop ? 60 : 22,
-                    vertical: 20,
-                  ),
-                  child: Column(
-                    children: [
-                      _buildHeader(isDesktop),
+  Future<void> _initializeCall() async {
+    if (!mounted || _isEnding || _isInitializing) return;
 
-                      const Spacer(),
+    _isInitializing = true;
 
-                      _buildRheaAvatar(isDesktop),
+    try {
+      debugPrint('RHEA LIVE: Starting Gemini Live call.');
 
-                      const SizedBox(height: 28),
+      final started = await _liveController.startCall();
 
-                      _buildStatus(),
+      if (!mounted || _isEnding) return;
 
-                      const SizedBox(height: 12),
+      if (!started) {
+        final error = _liveController.errorMessage.value.trim();
+        if (error.isNotEmpty) {
+          _showError(error);
+        } else {
+          _showError('Unable to connect to Rhea. Please try again.');
+        }
+        return;
+      }
 
-                      _buildDuration(),
+      debugPrint('RHEA LIVE: Call connected.');
+    } catch (error) {
+      debugPrint('RHEA LIVE CALL INITIALIZATION ERROR: $error');
 
-                      const SizedBox(height: 35),
+      if (mounted && !_isEnding) {
+        _showError('Unable to start Rhea voice call. Please try again.');
+      }
+    } finally {
+      _isInitializing = false;
+    }
+  }
 
-                      _buildTranscript(),
+  Future<void> _toggleMicrophone() async {
+    if (_isEnding || !_sessionStarted || _isTogglingMute) return;
 
-                      const Spacer(),
+    _isTogglingMute = true;
 
-                      _buildCallControls(isDesktop),
+    try {
+      await _liveController.toggleMute();
 
-                      const SizedBox(height: 18),
+      if (!mounted || _isEnding) return;
 
-                      _buildPrivacyNote(),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
+      debugPrint(
+        'RHEA LIVE: Microphone muted = ${_liveController.isMuted.value}',
+      );
+    } catch (error) {
+      debugPrint('RHEA LIVE MICROPHONE ERROR: $error');
+
+      if (mounted && !_isEnding) {
+        _showError('Unable to change microphone state.');
+      }
+    } finally {
+      _isTogglingMute = false;
+    }
+  }
+
+  Future<void> _endCall() async {
+    if (_endRequested) return;
+
+    _endRequested = true;
+    _isEnding = true;
+    _cleanupStarted = true;
+
+    if (mounted) setState(() {});
+
+    try {
+      debugPrint('RHEA LIVE: Ending call.');
+      await _liveController.endCall();
+      debugPrint('RHEA LIVE: Call ended.');
+    } catch (error) {
+      debugPrint('RHEA LIVE END CALL ERROR: $error');
+    }
+
+    await _setScreenAwake(false);
+
+    // Allow navigation only after endCall() has finished.
+    if (!mounted) return;
+
+    setState(() {
+      _allowPop = true;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
+  void _showError(String message) {
+    if (!mounted || message.trim().isEmpty || _isEnding) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message, maxLines: 3, overflow: TextOverflow.ellipsis),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  // ==============================================================
-  // HEADER
-  // ==============================================================
+  String _formatDuration(int totalSeconds) {
+    final duration = Duration(seconds: totalSeconds);
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hours = duration.inHours;
 
-  Widget _buildHeader(bool isDesktop) {
-    return Row(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: IconButton(
-            onPressed: _confirmEndCall,
-            icon: const Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ),
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:$minutes:$seconds';
+    }
 
-        const SizedBox(width: 13),
-
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Rhea AI',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                'Daily Check-in',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
-              ),
-            ],
-          ),
-        ),
-
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(.09),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: const BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'LIVE',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: .8,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return '$minutes:$seconds';
   }
 
-  // ==============================================================
-  // RHEA AVATAR
-  // ==============================================================
+  Color _statusColor() {
+    if (_isStarting || _isEnding) return Colors.orange;
+    if (_status == RheaLiveCallStatus.failed) return Colors.red;
+    if (_microphoneMuted) return Colors.grey;
+    if (_isListening) return Colors.green;
+    return AppColors.primary;
+  }
 
-  Widget _buildRheaAvatar(bool isDesktop) {
-    final size = isDesktop ? 245.0 : 205.0;
+  IconData _statusIcon() {
+    if (_isStarting) return Icons.sync_rounded;
+    if (_isEnding) return Icons.call_end_rounded;
+    if (_status == RheaLiveCallStatus.failed) {
+      return Icons.error_outline_rounded;
+    }
+    if (_microphoneMuted) return Icons.mic_off_rounded;
+    if (_isSpeaking) return Icons.volume_up_rounded;
+    if (_isListening) return Icons.mic_rounded;
+    return Icons.favorite_rounded;
+  }
 
+  Widget _buildAvatar(double size) {
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
-        final pulse = _pulseController.value;
+        final pulse = (_isListening || _isSpeaking)
+            ? _pulseController.value * 8
+            : 0.0;
 
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            // Outer glow
-            Container(
-              width: size + (25 * pulse),
-              height: size + (25 * pulse),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(.08 + (.06 * pulse)),
-                    blurRadius: 45 + (15 * pulse),
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-            ),
-
-            // Outer ring
-            Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.primary.withOpacity(.22),
-                  width: 1.5,
+        return Container(
+          width: size + pulse,
+          height: size + pulse,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.surface,
+            boxShadow: [
+              BoxShadow(
+                color: _statusColor().withValues(
+                  alpha: _isListening || _isSpeaking ? .28 : .12,
                 ),
+                blurRadius: _isListening || _isSpeaking ? 30 : 16,
+                spreadRadius: _isListening || _isSpeaking ? 5 : 1,
               ),
-            ),
-
-            // Inner ring
-            Container(
-              width: size * .86,
-              height: size * .86,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.primary.withOpacity(.06),
-                border: Border.all(color: AppColors.primary.withOpacity(.12)),
-              ),
-            ),
-
-            // Illustration
-            ClipOval(
+            ],
+          ),
+          child: ClipOval(
+            child: SizedBox.expand(
               child: Image.asset(
-                'assets/images/rhea_ai_avatar.png',
-                width: size * .72,
-                height: size * .72,
+                'assets/images/RheaAI_Call.png',
                 fit: BoxFit.cover,
+                alignment: Alignment.center,
                 errorBuilder: (context, error, stackTrace) {
+                  debugPrint('RHEA IMAGE LOAD ERROR: $error');
+
                   return Container(
-                    width: size * .72,
-                    height: size * .72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.surface,
-                    ),
-                    child: Icon(
-                      Icons.auto_awesome_rounded,
-                      color: AppColors.primary,
-                      size: size * .25,
+                    color: AppColors.primary.withValues(alpha: .12),
+                    child: const Center(
+                      child: Icon(
+                        Icons.person_rounded,
+                        size: 70,
+                        color: AppColors.primary,
+                      ),
                     ),
                   );
                 },
               ),
             ),
-
-            // Speaking indicator
-            if (isRheaSpeaking)
-              Positioned(
-                bottom: size * .03,
-                child: _SpeakingIndicator(pulse: pulse),
-              ),
-          ],
+          ),
         );
       },
     );
   }
 
-  // ==============================================================
-  // STATUS
-  // ==============================================================
-
-  Widget _buildStatus() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
-      child: Text(
-        isRheaSpeaking ? 'Rhea is speaking...' : 'Rhea is listening...',
-        key: ValueKey(isRheaSpeaking),
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 19,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-
-  // ==============================================================
-  // DURATION
-  // ==============================================================
-
-  Widget _buildDuration() {
-    final minutes = callDuration.inMinutes.toString().padLeft(2, '0');
-
-    final seconds = (callDuration.inSeconds % 60).toString().padLeft(2, '0');
-
-    return Text(
-      '$minutes:$seconds',
-      style: TextStyle(
-        color: AppColors.textSecondary,
-        fontSize: 13,
-        letterSpacing: 1.2,
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-
-  // ==============================================================
-  // TRANSCRIPT
-  // ==============================================================
-
-  Widget _buildTranscript() {
+  Widget _buildStatusBadge() {
     return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 620),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(.72),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.primary.withOpacity(.08)),
+        color: _statusColor().withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: _statusColor().withValues(alpha: .25)),
       ),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        child: Row(
-          key: ValueKey(isRheaSpeaking),
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(.10),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                isRheaSpeaking ? Icons.auto_awesome_rounded : Icons.mic_rounded,
-                color: AppColors.primary,
-                size: 14,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_statusIcon(), size: 16, color: _statusColor()),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              _statusText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _statusColor(),
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
               ),
             ),
-
-            const SizedBox(width: 11),
-
-            Expanded(
-              child: Text(
-                isRheaSpeaking
-                    ? '"How has your day been so far? '
-                          'Take your time — I\'m here to listen."'
-                    : 'Listening to you...',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  height: 1.45,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // ==============================================================
-  // CALL CONTROLS
-  // ==============================================================
+  Widget _buildControlButton({
+    required IconData icon,
+    required String label,
+    required Color backgroundColor,
+    required Color foregroundColor,
+    required VoidCallback? onTap,
+    bool large = false,
+  }) {
+    final size = large ? 64.0 : 56.0;
 
-  Widget _buildCallControls(bool isDesktop) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _CallControlButton(
-          icon: isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-          label: isMuted ? 'Unmute' : 'Mute',
-          active: isMuted,
-          onTap: () {
-            setState(() {
-              isMuted = !isMuted;
-            });
-          },
-        ),
-
-        SizedBox(width: isDesktop ? 35 : 22),
-
-        // END CALL
         GestureDetector(
-          onTap: _confirmEndCall,
-          child: Container(
-            width: 68,
-            height: 68,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: size,
+            height: size,
             decoration: BoxDecoration(
-              color: Colors.redAccent.withOpacity(.92),
+              color: backgroundColor,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.redAccent.withOpacity(.20),
-                  blurRadius: 20,
-                  spreadRadius: 2,
+                  color: backgroundColor.withValues(alpha: .20),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.call_end_rounded,
-              color: Colors.white,
-              size: 29,
+            child: Icon(icon, color: foregroundColor, size: large ? 28 : 24),
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCallControls() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildControlButton(
+            icon: _microphoneMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            label: _microphoneMuted ? 'Unmute' : 'Mute',
+            backgroundColor: _microphoneMuted
+                ? Colors.grey.shade700
+                : AppColors.primary,
+            foregroundColor: _microphoneMuted ? Colors.white : Colors.black,
+            onTap: _isEnding || !_sessionStarted || _isTogglingMute
+                ? null
+                : () => unawaited(_toggleMicrophone()),
+          ),
+          const SizedBox(width: 24),
+          _buildControlButton(
+            icon: Icons.call_end_rounded,
+            label: 'End',
+            backgroundColor: Colors.red.shade500,
+            foregroundColor: Colors.white,
+            large: true,
+            onTap: _isEnding ? null : () => unawaited(_endCall()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isSmallHeight = size.height < 700;
+
+    return PopScope(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !_endRequested) {
+          unawaited(_endCall());
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.surface,
+          elevation: 0,
+          centerTitle: false,
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            onPressed: _isEnding ? null : () => unawaited(_endCall()),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          title: const Text(
+            'RheaAI Check-in',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
-
-        SizedBox(width: isDesktop ? 35 : 22),
-
-        _CallControlButton(
-          icon: isSpeakerOn
-              ? Icons.volume_up_rounded
-              : Icons.volume_off_rounded,
-          label: isSpeakerOn ? 'Speaker' : 'Muted',
-          active: isSpeakerOn,
-          onTap: () {
-            setState(() {
-              isSpeakerOn = !isSpeakerOn;
-            });
-          },
-        ),
-      ],
-    );
-  }
-
-  // ==============================================================
-  // PRIVACY
-  // ==============================================================
-
-  Widget _buildPrivacyNote() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          Icons.lock_outline_rounded,
-          size: 13,
-          color: AppColors.textSecondary.withOpacity(.65),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          'Private & secure conversation',
-          style: TextStyle(
-            color: AppColors.textSecondary.withOpacity(.65),
-            fontSize: 10,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ==============================================================
-  // END CALL
-  // ==============================================================
-
-  void _confirmEndCall() {
-    Get.dialog(
-      Dialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
+        body: SafeArea(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(.10),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.call_end_rounded,
-                  color: Colors.redAccent,
-                  size: 25,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              const Text(
-                'End check-in?',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              const Text(
-                'Are you sure you want to end your '
-                'conversation with Rhea AI?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                  height: 1.45,
-                ),
-              ),
-
-              const SizedBox(height: 22),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: Get.back,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textPrimary,
-                        side: BorderSide(
-                          color: AppColors.textSecondary.withOpacity(.20),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Continue'),
-                    ),
-                  ),
-
-                  const SizedBox(width: 10),
-
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Get.back();
-
-                        if (widget.onEndCall != null) {
-                          widget.onEndCall!();
-                        } else {
-                          Get.back();
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'End Call',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                child: Row(
+                  children: [
+                    Flexible(child: _buildStatusBadge()),
+                    const Spacer(),
+                    const SizedBox(width: 12),
+                    Text(
+                      _formatDuration(_liveController.elapsedSeconds.value),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    top: isSmallHeight ? 10 : 28,
+                    bottom: 20,
+                  ),
+                  child: Column(
+                    children: [
+                      _buildAvatar(isSmallHeight ? 180 : 220),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Rhea AI',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        _isSpeaking
+                            ? 'Rhea is talking with you'
+                            : _isListening
+                            ? 'Speak naturally'
+                            : _statusText,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      if (_isStarting)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 18),
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                            strokeWidth: 2.5,
+                          ),
+                        ),
+                      if (_status == RheaLiveCallStatus.reconnecting)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 18),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 11,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Restoring your connection...',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (_status == RheaLiveCallStatus.failed)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 18,
+                            left: 24,
+                            right: 24,
+                          ),
+                          child: Text(
+                            _liveController.errorMessage.value.isNotEmpty
+                                ? _liveController.errorMessage.value
+                                : 'Unable to connect to Rhea.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              _buildCallControls(),
             ],
           ),
         ),
       ),
     );
   }
-}
-
-// ==================================================================
-// SPEAKING INDICATOR
-// ==================================================================
-
-class _SpeakingIndicator extends StatelessWidget {
-  const _SpeakingIndicator({required this.pulse});
-
-  final double pulse;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(.25),
-            blurRadius: 12 + (pulse * 8),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _bar(4 + (pulse * 5)),
-          const SizedBox(width: 3),
-          _bar(8 + (pulse * 7)),
-          const SizedBox(width: 3),
-          _bar(5 + (pulse * 6)),
-          const SizedBox(width: 7),
-          const Text(
-            'Speaking',
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  void dispose() {
+    _isEnding = true;
+    unawaited(_setScreenAwake(false));
 
-  Widget _bar(double height) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      width: 3,
-      height: height,
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(.75),
-        borderRadius: BorderRadius.circular(4),
-      ),
-    );
-  }
-}
+    for (final worker in _workers) {
+      worker.dispose();
+    }
+    _workers.clear();
 
-// ==================================================================
-// CALL CONTROL
-// ==================================================================
+    // When a route is removed externally, ensure its call is still ended.
+    // Normal End/Back navigation already invokes endCall(), so do not
+    // start a second cleanup operation.
+    if (!_endRequested && !_cleanupStarted) {
+      _cleanupStarted = true;
+      unawaited(_liveController.endCall());
+    }
 
-class _CallControlButton extends StatelessWidget {
-  const _CallControlButton({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: active
-                  ? AppColors.primary.withOpacity(.13)
-                  : AppColors.surface,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: active
-                    ? AppColors.primary.withOpacity(.25)
-                    : Colors.white.withOpacity(.06),
-              ),
-            ),
-            child: Icon(
-              icon,
-              color: active ? AppColors.primary : AppColors.textPrimary,
-              size: 22,
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 7),
-
-        Text(
-          label,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 9),
-        ),
-      ],
-    );
+    _pulseController.dispose();
+    super.dispose();
   }
 }

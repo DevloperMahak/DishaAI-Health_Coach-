@@ -2,10 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
-
+import 'package:disha_ai/features/ai_health_coach/presentation/screens/rheaai_call_screen.dart';
 import 'package:disha_ai/features/ai_health_coach/presentation/controllers/ai_controller.dart';
-import 'check_in_calls_screen.dart';
 import '../../../../app/theme/app_colors.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class AiHealthCoachScreen extends StatefulWidget {
   const AiHealthCoachScreen({super.key});
@@ -208,44 +208,45 @@ class _AiHealthCoachScreenState extends State<AiHealthCoachScreen> {
   // HANDLE CAMERA / FOOD SCAN IMAGE PICKING
   //---------------------------------------------------------------
 
-  Future<void> _pickAndScanImage() async {
+  Future<void> _pickAndScanImage({
+    ImageSource source = ImageSource.camera,
+  }) async {
+    if (_isTyping) return;
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.camera,
+        source: source,
         imageQuality: 80,
       );
-
-      if (pickedFile == null) return;
+      if (pickedFile == null || !mounted) return;
 
       final File imageFile = File(pickedFile.path);
-
       setState(() {
         messages.add({
-          "text": "📷 [Attached Food Image for Analysis]",
+          "text": source == ImageSource.camera
+              ? "📷 Food photo captured for analysis"
+              : "🖼️ Food photo selected for analysis",
           "isUser": true,
           "isError": false,
         });
         _isTyping = true;
       });
-
       scrollToBottom();
 
+      // Same scan API used in MealsdetailScreen.
       final success = await _aiController.scanFoodImage(imageFile);
-
       if (!mounted) return;
 
       setState(() {
         _isTyping = false;
-
         if (success && _aiController.foodAnalysis.value != null) {
-          final resModel = _aiController.foodAnalysis.value!;
-          final analysisResult =
-              resModel.message ??
-              resModel.data?.toString() ??
-              "Food scanned successfully! Here are the nutritional insights.";
-
+          final response = _aiController.foodAnalysis.value!;
+          final formatted = _formatFoodScanResult(response.data);
           messages.add({
-            "text": "🥗 **Food Analysis Result:**\n$analysisResult",
+            "text": formatted.isNotEmpty
+                ? formatted
+                : (response.message?.trim().isNotEmpty == true
+                      ? response.message!
+                      : "Food scanned successfully, but no nutrition details were returned."),
             "isUser": false,
             "isError": false,
           });
@@ -253,26 +254,116 @@ class _AiHealthCoachScreenState extends State<AiHealthCoachScreen> {
           messages.add({
             "text": _aiController.errorMessage.value.isNotEmpty
                 ? _aiController.errorMessage.value
-                : "Failed to analyze the image. Please try again.",
+                : "Failed to analyze the food image. Please try again.",
             "isUser": false,
             "isError": true,
           });
         }
       });
-
       scrollToBottom();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isTyping = false;
         messages.add({
-          "text": "Error capturing image: $e",
+          "text": "Unable to scan image: $e",
           "isUser": false,
           "isError": true,
         });
       });
       scrollToBottom();
     }
+  }
+
+  // Matches the nested scan_result/macros structure handled by MealsdetailScreen.
+  String _formatFoodScanResult(dynamic data) {
+    dynamic value = data;
+    if (value is List && value.isNotEmpty) value = value.first;
+    if (value is Map && value['data'] is Map) value = value['data'];
+    if (value is Map && value['scan_result'] is Map) {
+      value = value['scan_result'];
+    }
+    if (value is Map && value['food'] is Map) value = value['food'];
+    if (value is! Map) return value?.toString() ?? '';
+
+    final macros = value['macros'] is Map
+        ? value['macros'] as Map
+        : <String, dynamic>{};
+    String field(dynamic v) => v == null || v.toString().trim().isEmpty
+        ? 'Not available'
+        : v.toString();
+    final name = field(value['food_name'] ?? value['name']);
+    final calories = field(value['estimated_calories'] ?? value['calories']);
+    final protein = field(
+      macros['protein_g'] ?? value['protein_g'] ?? value['protein'],
+    );
+    final carbs = field(
+      macros['carbs_g'] ?? value['carbs_g'] ?? value['carbs'],
+    );
+    final fat = field(macros['fat_g'] ?? value['fat_g'] ?? value['fat']);
+    final serving = field(value['serving_size']);
+    final benefits = value['health_benefits'] ?? value['benefits'];
+    final details = benefits is List
+        ? benefits.join(', ')
+        : benefits?.toString();
+
+    return '🥗 Food Analysis Result\n\n'
+        'Food: $name\n'
+        'Calories: $calories kcal\n'
+        'Protein: $protein g\n'
+        'Carbs: $carbs g\n'
+        'Fat: $fat g\n'
+        'Serving: $serving'
+        '${details != null && details.trim().isNotEmpty ? "\n\nHealth benefits: $details" : ""}';
+  }
+
+  void _showFoodScanOptions() {
+    if (_isTyping) return;
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(
+                  Icons.camera_alt_rounded,
+                  color: AppColors.primary,
+                ),
+                title: const Text(
+                  'Scan Food with Camera',
+                  style: TextStyle(color: AppColors.textPrimary),
+                ),
+                onTap: () {
+                  Get.back();
+                  _pickAndScanImage(source: ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.photo_library_rounded,
+                  color: AppColors.primary,
+                ),
+                title: const Text(
+                  'Choose from Gallery',
+                  style: TextStyle(color: AppColors.textPrimary),
+                ),
+                onTap: () {
+                  Get.back();
+                  _pickAndScanImage(source: ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 
   //---------------------------------------------------------------
@@ -300,7 +391,7 @@ class _AiHealthCoachScreenState extends State<AiHealthCoachScreen> {
               ),
               onTap: () {
                 Navigator.pop(context);
-                _pickAndScanImage();
+                _showFoodScanOptions();
               },
             ),
             ListTile(
@@ -447,10 +538,15 @@ class _AiHealthCoachScreenState extends State<AiHealthCoachScreen> {
   // OPEN CHECK-IN CALL
   //---------------------------------------------------------------
 
+  //---------------------------------------------------------------
+  // OPEN RHEA AI CALL DIRECTLY
+  //---------------------------------------------------------------
+
   void _openCheckInCall() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const CheckInCallsScreen()),
+    Get.to(
+      () => const RheaCheckInCallScreen(),
+      transition: Transition.rightToLeft,
+      duration: const Duration(milliseconds: 300),
     );
   }
 
@@ -681,6 +777,12 @@ class _AiHealthCoachScreenState extends State<AiHealthCoachScreen> {
   //================================================================
 
   Widget _chatBubble(String text, bool isUser, bool isError, bool tablet) {
+    final textColor = isUser
+        ? Colors.black
+        : (isError ? Colors.redAccent : AppColors.textPrimary);
+
+    final fontSize = tablet ? 17.0 : 15.0;
+
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -712,17 +814,90 @@ class _AiHealthCoachScreenState extends State<AiHealthCoachScreen> {
                       : AppColors.border,
                 ),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: isUser
-                ? Colors.black
-                : (isError ? Colors.redAccent : AppColors.textPrimary),
-            fontSize: tablet ? 17 : 15,
-            height: 1.45,
-            fontWeight: isUser ? FontWeight.w500 : FontWeight.w400,
-          ),
-        ),
+
+        // User messages remain plain text.
+        // AI messages are rendered as Markdown.
+        child: isUser || isError
+            ? Text(
+                text,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: fontSize,
+                  height: 1.45,
+                  fontWeight: isUser ? FontWeight.w500 : FontWeight.w400,
+                ),
+              )
+            : MarkdownBody(
+                data: text,
+                selectable: true,
+                softLineBreak: true,
+                styleSheet: MarkdownStyleSheet(
+                  p: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: fontSize,
+                    height: 1.5,
+                    fontWeight: FontWeight.w400,
+                  ),
+
+                  strong: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w700,
+                  ),
+
+                  em: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: fontSize,
+                    fontStyle: FontStyle.italic,
+                  ),
+
+                  h1: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: fontSize + 5,
+                    fontWeight: FontWeight.w800,
+                  ),
+
+                  h2: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: fontSize + 3,
+                    fontWeight: FontWeight.w700,
+                  ),
+
+                  h3: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: fontSize + 1,
+                    fontWeight: FontWeight.w700,
+                  ),
+
+                  listBullet: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: fontSize,
+                  ),
+
+                  listIndent: 20,
+
+                  blockSpacing: 10,
+
+                  listBulletPadding: const EdgeInsets.only(right: 6),
+
+                  blockquote: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: fontSize,
+                    fontStyle: FontStyle.italic,
+                  ),
+
+                  code: TextStyle(
+                    color: AppColors.primary,
+                    backgroundColor: AppColors.surface,
+                    fontSize: fontSize - 1,
+                  ),
+
+                  a: const TextStyle(
+                    color: AppColors.primary,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
       ),
     );
   }
@@ -898,7 +1073,7 @@ class _AiHealthCoachScreenState extends State<AiHealthCoachScreen> {
                     color: AppColors.primary,
                     size: tablet ? 23 : 20,
                   ),
-                  onPressed: _pickAndScanImage,
+                  onPressed: _showFoodScanOptions,
                 ),
               ),
             ),

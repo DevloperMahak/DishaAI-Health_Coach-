@@ -2,12 +2,42 @@ import 'package:disha_ai/features/nutritionist/data/models/expert_model.dart';
 import 'package:disha_ai/features/nutritionist/presentation/screens/nutritionist_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
 import '../../../../app/theme/app_colors.dart';
 
 class NutritionistCard extends StatelessWidget {
   const NutritionistCard({super.key, required this.expert});
 
   final ExpertModel expert;
+
+  // ============================================================
+  // FORMAT CONSULTATION FEE WITH INDIAN RUPEE SYMBOL
+  // ============================================================
+
+  String get formattedFee {
+    final String fee = expert.fee?.trim() ?? '';
+
+    // Do not display an incorrect static consultation fee.
+    if (fee.isEmpty) {
+      return 'Fee unavailable';
+    }
+
+    // If the API already returns ₹, use it directly.
+    if (fee.contains('₹')) {
+      return fee;
+    }
+
+    // Convert Rs. or INR into ₹.
+    final String cleanedFee = fee
+        .replaceFirst(RegExp(r'^(Rs\.?|INR)\s*', caseSensitive: false), '')
+        .trim();
+
+    if (cleanedFee.isEmpty) {
+      return 'Fee unavailable';
+    }
+
+    return '₹$cleanedFee';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +59,13 @@ class NutritionistCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // =====================================================
+          // EXPERT PROFILE
+          // =====================================================
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Expert profile image
               CircleAvatar(
                 radius: 28,
                 backgroundColor: AppColors.background,
@@ -42,11 +76,15 @@ class NutritionistCard extends StatelessWidget {
                           as ImageProvider,
                 onBackgroundImageError: (_, __) {},
               ),
+
               const SizedBox(width: 12),
+
+              // Expert name and specialization
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Expert name
                     Text(
                       expert.name,
                       maxLines: 1,
@@ -57,7 +95,10 @@ class NutritionistCard extends StatelessWidget {
                         fontSize: 15,
                       ),
                     ),
+
                     const SizedBox(height: 4),
+
+                    // Expert specialization
                     Text(
                       expert.specialization ??
                           expert.designation ??
@@ -75,20 +116,40 @@ class NutritionistCard extends StatelessWidget {
               ),
             ],
           ),
+
           const SizedBox(height: 12),
+
           Divider(color: AppColors.primary.withOpacity(.1), height: 1),
+
           const SizedBox(height: 12),
+
+          // =====================================================
+          // CONSULTATION FEE + CONSULT BUTTON
+          // =====================================================
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                expert.fee ?? '₹750 / session',
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12.5,
+              // =================================================
+              // DYNAMIC CONSULTATION FEE WITH ₹ SYMBOL
+              // =================================================
+              Flexible(
+                child: Text(
+                  formattedFee,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.5,
+                  ),
                 ),
               ),
+
+              const SizedBox(width: 8),
+
+              // =================================================
+              // CONSULT NOW BUTTON
+              // =================================================
               ElevatedButton(
                 onPressed: () {
                   Get.to(() => NutritionistDetailScreen(expert: expert));
@@ -106,7 +167,7 @@ class NutritionistCard extends StatelessWidget {
                   ),
                 ),
                 child: const Text(
-                  "Consult Now",
+                  'Consult Now',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5),
                 ),
               ),

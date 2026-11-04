@@ -1,10 +1,13 @@
+import 'package:disha_ai/features/plan/presentation/controllers/today_progress_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:disha_ai/app/routes/app_routes.dart';
 import 'package:disha_ai/app/theme/app_colors.dart';
+import 'package:disha_ai/features/authentication/presentation/controllers/auth_controller.dart';
 import 'package:disha_ai/features/dashboard/presentation/widgets/dashboard_bottom_nav_bar.dart';
 import 'package:disha_ai/features/ai_health_coach/presentation/controllers/ai_controller.dart';
+import 'package:disha_ai/features/water_tracker/presentation/controllers/water_tracker_controller.dart';
 
 import '../widgets/plan_header.dart';
 import '../widgets/today_progress_card.dart';
@@ -22,18 +25,34 @@ class PlanScreen extends StatefulWidget {
 }
 
 class _PlanScreenState extends State<PlanScreen> {
-  final AiController _aiController = Get.put(AiController());
+  final AiController _aiController = Get.isRegistered<AiController>()
+      ? Get.find<AiController>()
+      : Get.put(AiController());
 
-  // Detects whether the screen was opened from Onboarding or Dashboard
+  final AuthController _authController = Get.isRegistered<AuthController>()
+      ? Get.find<AuthController>()
+      : Get.put(AuthController());
+
+  final WaterTrackerController _waterController =
+      Get.isRegistered<WaterTrackerController>()
+      ? Get.find<WaterTrackerController>()
+      : Get.put(WaterTrackerController());
+
+  final TodayProgressController _todayProgressController =
+      Get.isRegistered<TodayProgressController>()
+      ? Get.find<TodayProgressController>()
+      : Get.put(TodayProgressController());
+
   late final bool _isFromOnboarding;
+
   int _currentIndex = 1;
 
   @override
   void initState() {
     super.initState();
 
-    // Check arguments passed via Get.toNamed
     final args = Get.arguments;
+
     _isFromOnboarding = args is Map && args['isFromOnboarding'] == true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -41,10 +60,23 @@ class _PlanScreenState extends State<PlanScreen> {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // LOAD PLAN DATA
+  // ---------------------------------------------------------------------------
+
   Future<void> _loadPlanData() async {
     await Future.wait([
       _aiController.generateHealthPlan(),
       _aiController.getRecommendations(),
+      _authController.getCurrentUser(),
+      _waterController.fetchTodayWater(),
+
+      // Dynamic:
+      // total tasks
+      // completed tasks
+      // pending tasks
+      // percentage
+      _todayProgressController.refreshTodayProgress(),
     ]);
   }
 
@@ -52,8 +84,28 @@ class _PlanScreenState extends State<PlanScreen> {
     await _loadPlanData();
   }
 
+  // ---------------------------------------------------------------------------
+  // DYNAMIC STREAK
+  // ---------------------------------------------------------------------------
+
+  int get _streakDays {
+    final user = _authController.currentUser.value;
+
+    if (user != null && user['current_streak'] != null) {
+      return int.tryParse(user['current_streak'].toString()) ?? 0;
+    }
+
+    return 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // BOTTOM NAVIGATION
+  // ---------------------------------------------------------------------------
+
   void _onBottomNavigationTap(int index) {
-    if (_currentIndex == index) return;
+    if (_currentIndex == index) {
+      return;
+    }
 
     setState(() {
       _currentIndex = index;
@@ -63,21 +115,28 @@ class _PlanScreenState extends State<PlanScreen> {
       case 0:
         Get.offAllNamed(AppRoutes.dashboard);
         break;
+
       case 1:
         break;
+
       case 2:
         Get.toNamed(AppRoutes.progress);
         break;
+
       case 3:
         Get.toNamed(AppRoutes.aiCoach);
         break;
+
       case 4:
-        Get.toNamed(AppRoutes.profile);
+        Get.toNamed(AppRoutes.contactNutritionist);
         break;
     }
   }
 
-  // Handles back action safely depending on entry point
+  // ---------------------------------------------------------------------------
+  // BACK ACTION
+  // ---------------------------------------------------------------------------
+
   void _handleBackAction() {
     if (_isFromOnboarding) {
       Get.offAllNamed(AppRoutes.dashboard);
@@ -95,18 +154,20 @@ class _PlanScreenState extends State<PlanScreen> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
-        // Only show bottom navigation bar if accessed from the Dashboard
+
         bottomNavigationBar: _isFromOnboarding
             ? null
             : DashboardBottomNavBar(
                 currentIndex: _currentIndex,
                 onTap: _onBottomNavigationTap,
               ),
+
         body: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth;
               final height = constraints.maxHeight;
+
               final bool isTablet = width >= 700 || width > height;
 
               return RefreshIndicator(
@@ -119,7 +180,6 @@ class _PlanScreenState extends State<PlanScreen> {
                         ? _buildTabletLayout(width, height)
                         : _buildPhoneLayout(width, height),
 
-                    // Onboarding Top Bar with Back Button & Purchase Action if from onboarding
                     if (_isFromOnboarding)
                       Positioned(
                         top: 10,
@@ -135,11 +195,12 @@ class _PlanScreenState extends State<PlanScreen> {
                                 color: AppColors.primary,
                               ),
                             ),
+
                             ElevatedButton(
                               onPressed: () {
                                 Get.snackbar(
-                                  "Subscription".tr,
-                                  "Proceeding to payment gateway...".tr,
+                                  'Subscription'.tr,
+                                  'Proceeding to payment gateway...'.tr,
                                   snackPosition: SnackPosition.BOTTOM,
                                 );
                               },
@@ -147,7 +208,7 @@ class _PlanScreenState extends State<PlanScreen> {
                                 backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.black,
                               ),
-                              child: Text("Purchase Plan".tr),
+                              child: Text('Purchase Plan'.tr),
                             ),
                           ],
                         ),
@@ -162,7 +223,10 @@ class _PlanScreenState extends State<PlanScreen> {
     );
   }
 
-  // 💡 DYNAMIC GENERATED PLAN CARD WIDGET
+  // ---------------------------------------------------------------------------
+  // GENERATED AI PLAN
+  // ---------------------------------------------------------------------------
+
   Widget _buildGeneratedPlanCard() {
     return Obx(() {
       final response = _aiController.healthPlan.value;
@@ -183,7 +247,9 @@ class _PlanScreenState extends State<PlanScreen> {
         );
       }
 
-      if (data == null) return const SizedBox.shrink();
+      if (data == null) {
+        return const SizedBox.shrink();
+      }
 
       return Container(
         width: double.infinity,
@@ -203,8 +269,8 @@ class _PlanScreenState extends State<PlanScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: const [
+            const Row(
+              children: [
                 Icon(
                   Icons.auto_awesome_rounded,
                   color: AppColors.primary,
@@ -212,7 +278,7 @@ class _PlanScreenState extends State<PlanScreen> {
                 ),
                 SizedBox(width: 8),
                 Text(
-                  "Your Custom AI Generated Plan",
+                  'Custom Plan',
                   style: TextStyle(
                     color: AppColors.primary,
                     fontWeight: FontWeight.bold,
@@ -221,7 +287,9 @@ class _PlanScreenState extends State<PlanScreen> {
                 ),
               ],
             ),
+
             const SizedBox(height: 12),
+
             if (data is Map<String, dynamic>) ...[
               ...((data['plan'] is Map ? data['plan'] : data)
                       as Map<String, dynamic>)
@@ -241,7 +309,9 @@ class _PlanScreenState extends State<PlanScreen> {
                               fontSize: 13,
                             ),
                           ),
+
                           const SizedBox(height: 2),
+
                           Text(
                             entry.value.toString(),
                             style: const TextStyle(
@@ -271,6 +341,33 @@ class _PlanScreenState extends State<PlanScreen> {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // DYNAMIC STREAK CARD
+  // ---------------------------------------------------------------------------
+
+  Widget _buildDynamicStreakCard() {
+    return Obx(() => StreakCard(streakDays: _streakDays));
+  }
+
+  // ---------------------------------------------------------------------------
+  // DYNAMIC WATER CARD
+  // ---------------------------------------------------------------------------
+
+  Widget _buildWaterTrackerCard() {
+    return Obx(
+      () => WaterTrackerCard(
+        currentIntake: _waterController.todayIntake,
+        dailyGoal: _waterController.dailyGoal,
+        progress: _waterController.progress,
+        percentage: _waterController.percentage,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // PHONE LAYOUT
+  // ---------------------------------------------------------------------------
+
   Widget _buildPhoneLayout(double width, double height) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(
@@ -281,28 +378,45 @@ class _PlanScreenState extends State<PlanScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PlanHeader(),
+
           const SizedBox(height: 20),
 
-          // 💡 Integrated Generated Plan Card here
           _buildGeneratedPlanCard(),
+
           const SizedBox(height: 16),
 
+          // Dynamic task progress.
           const TodayProgressCard(),
+
           const SizedBox(height: 16),
+
           const AiMessageCard(),
+
           const SizedBox(height: 16),
+
+          // Dynamic task list.
           DailyTaskCard(),
+
           const SizedBox(height: 16),
-          const WaterTrackerCard(),
+
+          _buildWaterTrackerCard(),
+
+          //const SizedBox(height: 16),
+
+          //const MealPlanCard(),
           const SizedBox(height: 16),
-          const MealPlanCard(),
-          const SizedBox(height: 16),
-          const StreakCard(),
+
+          _buildDynamicStreakCard(),
+
           const SizedBox(height: 80),
         ],
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // TABLET / DESKTOP LAYOUT
+  // ---------------------------------------------------------------------------
 
   Widget _buildTabletLayout(double width, double height) {
     final double padding = width >= 1200 ? 120.0 : 60.0;
@@ -325,33 +439,51 @@ class _PlanScreenState extends State<PlanScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const PlanHeader(),
+
                 const SizedBox(height: 20),
 
-                // 💡 Integrated Generated Plan Card for Tablet
                 _buildGeneratedPlanCard(),
+
                 const SizedBox(height: 20),
 
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // =========================================================
+                    // LEFT COLUMN
+                    // =========================================================
                     Expanded(
                       child: Column(
                         children: [
                           const TodayProgressCard(),
+
                           const SizedBox(height: 20),
+
                           DailyTaskCard(),
+
+                          const SizedBox(height: 20),
+
+                          _buildWaterTrackerCard(),
                         ],
                       ),
                     ),
+
                     const SizedBox(width: 24),
+
+                    // =========================================================
+                    // RIGHT COLUMN
+                    // =========================================================
                     Expanded(
                       child: Column(
                         children: [
-                          AiMessageCard(),
+                          const AiMessageCard(),
+
+                          //const SizedBox(height: 20),
+
+                          //const MealPlanCard(),
                           const SizedBox(height: 20),
-                          const MealPlanCard(),
-                          const SizedBox(height: 20),
-                          const StreakCard(),
+
+                          _buildDynamicStreakCard(),
                         ],
                       ),
                     ),

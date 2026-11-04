@@ -12,18 +12,48 @@ class BMIProgressCard extends StatelessWidget {
     return (width / 390).clamp(.88, 1.12);
   }
 
+  // ============================================================
+  // ASIAN BMI CLASSIFICATION
+  // ============================================================
+  //
+  // BMI < 18.5       → Underweight
+  // 18.5 ≤ BMI < 23  → Healthy
+  // 23 ≤ BMI < 27.5  → Overweight
+  // BMI ≥ 27.5       → Obese
+  //
+  // These thresholds are intended for adult Asian-population
+  // risk classification and should not be applied to children
+  // or adolescents.
+  // ============================================================
+
+  String get _displayCategory {
+    if (bmi < 18.5) {
+      return 'Underweight';
+    }
+
+    if (bmi < 23.0) {
+      return 'Healthy';
+    }
+
+    if (bmi < 27.5) {
+      return 'Overweight';
+    }
+
+    return 'Obese';
+  }
+
   Color get _categoryColor {
-    switch (category.toLowerCase()) {
-      case "underweight":
+    switch (_displayCategory.toLowerCase()) {
+      case 'underweight':
         return Colors.orange;
 
-      case "healthy":
+      case 'healthy':
         return Colors.green;
 
-      case "overweight":
+      case 'overweight':
         return Colors.deepOrange;
 
-      case "obese":
+      case 'obese':
         return Colors.red;
 
       default:
@@ -31,8 +61,16 @@ class BMIProgressCard extends StatelessWidget {
     }
   }
 
+  // ============================================================
+  // PROGRESS
+  // ============================================================
+  //
+  // BMI is displayed visually from 0 to 35.
+  // Values above 35 are capped to keep the UI responsive.
+  // ============================================================
+
   double get _progress {
-    return (bmi / 40).clamp(0.0, 1.0);
+    return (bmi / 35).clamp(0.0, 1.0);
   }
 
   @override
@@ -57,9 +95,9 @@ class BMIProgressCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          //----------------------------------------------------
-          // Header
-          //----------------------------------------------------
+          // ======================================================
+          // HEADER
+          // ======================================================
           Row(
             children: [
               Container(
@@ -74,26 +112,22 @@ class BMIProgressCard extends StatelessWidget {
                   color: AppColors.primary,
                 ),
               ),
-
               const SizedBox(width: 14),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "BMI Status",
+                      'BMI Status',
                       style: TextStyle(
                         fontSize: (18 * scale).clamp(16.0, 20.0),
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
                       ),
                     ),
-
                     const SizedBox(height: 4),
-
                     Text(
-                      "Body Mass Index",
+                      'Asian BMI Classification',
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: (12 * scale).clamp(11.0, 14.0),
@@ -107,9 +141,9 @@ class BMIProgressCard extends StatelessWidget {
 
           SizedBox(height: 24 * scale),
 
-          //----------------------------------------------------
+          // ======================================================
           // BMI VALUE
-          //----------------------------------------------------
+          // ======================================================
           Center(
             child: Column(
               children: [
@@ -121,9 +155,7 @@ class BMIProgressCard extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 6),
-
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 18,
@@ -134,7 +166,7 @@ class BMIProgressCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: Text(
-                    category,
+                    _displayCategory,
                     style: TextStyle(
                       color: _categoryColor,
                       fontWeight: FontWeight.bold,
@@ -147,16 +179,16 @@ class BMIProgressCard extends StatelessWidget {
 
           SizedBox(height: 26 * scale),
 
-          //----------------------------------------------------
-          // Progress Bar
-          //----------------------------------------------------
+          // ======================================================
+          // BMI PROGRESS BAR
+          // ======================================================
           ClipRRect(
             borderRadius: BorderRadius.circular(50),
             child: LinearProgressIndicator(
               value: _progress,
               minHeight: 10,
               backgroundColor: AppColors.background,
-              valueColor: AlwaysStoppedAnimation(_categoryColor),
+              valueColor: AlwaysStoppedAnimation<Color>(_categoryColor),
             ),
           ),
 
@@ -166,11 +198,11 @@ class BMIProgressCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: const [
               Text(
-                "0",
+                '0',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
               ),
               Text(
-                "40",
+                '35+',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
               ),
             ],
@@ -178,45 +210,105 @@ class BMIProgressCard extends StatelessWidget {
 
           SizedBox(height: 22 * scale),
 
-          //----------------------------------------------------
-          // BMI Ranges
-          //----------------------------------------------------
+          // ======================================================
+          // ASIAN BMI RANGES - ALL 4 CATEGORIES
+          // ======================================================
           Row(
             children: [
               Expanded(
                 child: _RangeChip(
-                  title: "Healthy",
-                  value: "18.5-24.9",
-                  color: Colors.green,
-                ),
-              ),
-
-              const SizedBox(width: 10),
-
-              Expanded(
-                child: _RangeChip(
-                  title: "Over",
-                  value: "25-29.9",
+                  title: 'Underweight',
+                  value: '< 18.5',
                   color: Colors.orange,
                 ),
               ),
 
-              const SizedBox(width: 10),
+              const SizedBox(width: 6),
 
               Expanded(
                 child: _RangeChip(
-                  title: "Obese",
-                  value: "30+",
+                  title: 'Healthy',
+                  value: '18.5–22.9',
+                  color: Colors.green,
+                ),
+              ),
+
+              const SizedBox(width: 6),
+
+              Expanded(
+                child: _RangeChip(
+                  title: 'Overweight',
+                  value: '23–24.9',
+                  color: Colors.deepOrange,
+                ),
+              ),
+
+              const SizedBox(width: 6),
+
+              Expanded(
+                child: _RangeChip(
+                  title: 'Pre-Obese',
+                  value: '25–29.9',
+                  color: Colors.deepOrange,
+                ),
+              ),
+              const SizedBox(width: 6),
+
+              Expanded(
+                child: _RangeChip(
+                  title: 'Obese',
+                  value: '≥ 30',
                   color: Colors.red,
                 ),
               ),
             ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // ======================================================
+          // CLASSIFICATION NOTE
+          // ======================================================
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(.06),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 17,
+                  color: AppColors.primary.withOpacity(.8),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Asian BMI thresholds are used for this classification. '
+                    'BMI is a screening measure and does not by itself '
+                    'diagnose health conditions.',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 10.5 * scale,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 }
+
+// ================================================================
+// RANGE CHIP
+// ================================================================
 
 class _RangeChip extends StatelessWidget {
   const _RangeChip({
@@ -232,7 +324,7 @@ class _RangeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(16),
@@ -242,18 +334,22 @@ class _RangeChip extends StatelessWidget {
         children: [
           Text(
             title,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.bold,
-              fontSize: 13,
+              fontSize: 11,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
+            textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 11,
+              fontSize: 10,
             ),
           ),
         ],

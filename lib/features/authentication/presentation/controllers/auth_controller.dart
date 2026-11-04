@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:disha_ai/core/notifications/fcm_notification_service.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:http/http.dart' as http;
@@ -38,15 +39,11 @@ class AuthController extends GetxController {
   String? get accessToken {
     final token = _storage.read<String>(accessTokenKey);
 
-    if (token == null) {
-      return null;
-    }
+    if (token == null) return null;
 
     final trimmedToken = token.trim();
 
-    if (trimmedToken.isEmpty) {
-      return null;
-    }
+    if (trimmedToken.isEmpty) return null;
 
     return trimmedToken;
   }
@@ -54,15 +51,11 @@ class AuthController extends GetxController {
   String? get refreshToken {
     final token = _storage.read<String>(refreshTokenKey);
 
-    if (token == null) {
-      return null;
-    }
+    if (token == null) return null;
 
     final trimmedToken = token.trim();
 
-    if (trimmedToken.isEmpty) {
-      return null;
-    }
+    if (trimmedToken.isEmpty) return null;
 
     return trimmedToken;
   }
@@ -75,6 +68,33 @@ class AuthController extends GetxController {
     final token = accessToken;
 
     return token != null && token.isNotEmpty;
+  }
+
+  // ============================================================
+  // FCM TOKEN REGISTRATION
+  // ============================================================
+
+  /// Registers the current Firebase device token with Laravel.
+  ///
+  /// This method must be called only after an authenticated
+  /// access token has been saved.
+  ///
+  /// FCM failure must never interrupt the authentication flow.
+  Future<void> _registerFcmTokenSafely() async {
+    try {
+      print('📡 Registering FCM device token...');
+
+      final success = await FcmNotificationService.instance
+          .registerCurrentTokenWithBackend();
+
+      if (success) {
+        print('✅ FCM device token registered successfully');
+      } else {
+        print('⚠️ FCM device token registration unsuccessful');
+      }
+    } catch (e) {
+      print('⚠️ FCM registration error: $e');
+    }
   }
 
   // ============================================================
@@ -93,7 +113,7 @@ class AuthController extends GetxController {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: jsonEncode({'mobile': mobile}),
+        body: jsonEncode({'mobile': mobile.trim()}),
       );
 
       final data = _decodeResponse(response);
@@ -138,15 +158,14 @@ class AuthController extends GetxController {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        // Change it BACK to this:
         body: jsonEncode({'mobile': mobile.trim(), 'otp': otp.trim()}),
       );
 
       final data = _decodeResponse(response);
 
-      // ========================================================
-      // SUCCESS
-      // ========================================================
+      // --------------------------------------------------------
+      // OTP SUCCESS
+      // --------------------------------------------------------
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         // ------------------------------------------------------
@@ -158,80 +177,10 @@ class AuthController extends GetxController {
         final receivedRefreshToken = _extractRefreshToken(data);
 
         // ------------------------------------------------------
-        // SAVE ACCESS TOKEN
-        // ------------------------------------------------------
-
-        if (receivedAccessToken != null && receivedAccessToken.isNotEmpty) {
-          await _storage.write(accessTokenKey, receivedAccessToken);
-        }
-
-        // ------------------------------------------------------
-        // SAVE REFRESH TOKEN
-        // ------------------------------------------------------
-
-        if (receivedRefreshToken != null && receivedRefreshToken.isNotEmpty) {
-          await _storage.write(refreshTokenKey, receivedRefreshToken);
-        }
-
-        // ------------------------------------------------------
-        // AUTH DEBUG
-        // ------------------------------------------------------
-
-        final accessToken = _extractAccessToken(data);
-        final refreshToken = _extractRefreshToken(data);
-
-        print('========== AUTH CHECK ==========');
-        print('RECEIVED TOKEN EXISTS: ${accessToken != null}');
-        print('RECEIVED TOKEN LENGTH: ${accessToken?.length ?? 0}');
-        print('RECEIVED TOKEN: $accessToken');
-        print('================================');
-
-        if (accessToken != null && accessToken.isNotEmpty) {
-          await _storage.write(accessTokenKey, accessToken);
-
-          print('✅ ACCESS TOKEN SAVED');
-          print('STORED TOKEN LENGTH: ${accessToken.length}');
-        } else {
-          print('❌ ACCESS TOKEN WAS NOT FOUND IN VERIFY OTP RESPONSE');
-          print('VERIFY OTP RESPONSE DATA: $data');
-        }
-        final storedToken = _storage.read<String>(accessTokenKey);
-
-        print('========== AUTH CHECK ==========');
-        print(
-          'RECEIVED TOKEN EXISTS: '
-          '${receivedAccessToken != null}',
-        );
-        print(
-          'RECEIVED TOKEN LENGTH: '
-          '${receivedAccessToken?.length ?? 0}',
-        );
-        print(
-          'STORED TOKEN EXISTS: '
-          '${storedToken != null}',
-        );
-        print(
-          'STORED TOKEN LENGTH: '
-          '${storedToken?.length ?? 0}',
-        );
-        print(
-          'LOGGED IN: '
-          '${storedToken != null && storedToken.isNotEmpty}',
-        );
-        print('================================');
-
-        // ------------------------------------------------------
-        // TOKEN NOT RECEIVED
+        // VALIDATE ACCESS TOKEN
         // ------------------------------------------------------
 
         if (receivedAccessToken == null || receivedAccessToken.isEmpty) {
-          print(
-            '❌ ACCESS TOKEN WAS NOT FOUND '
-            'IN VERIFY OTP RESPONSE',
-          );
-
-          print('VERIFY OTP RESPONSE DATA: $data');
-
           isAuthenticated.value = false;
 
           return {
@@ -240,6 +189,20 @@ class AuthController extends GetxController {
                 'Login successful, but access token was not received from server.',
             'data': data,
           };
+        }
+
+        // ------------------------------------------------------
+        // SAVE ACCESS TOKEN
+        // ------------------------------------------------------
+
+        await _storage.write(accessTokenKey, receivedAccessToken);
+
+        // ------------------------------------------------------
+        // SAVE REFRESH TOKEN
+        // ------------------------------------------------------
+
+        if (receivedRefreshToken != null && receivedRefreshToken.isNotEmpty) {
+          await _storage.write(refreshTokenKey, receivedRefreshToken);
         }
 
         // ------------------------------------------------------
@@ -260,28 +223,27 @@ class AuthController extends GetxController {
 
         isAuthenticated.value = true;
 
+        print('========== AUTH SUCCESS ==========');
+        print('ACCESS TOKEN SAVED: true');
+        print('USER AVAILABLE: ${user != null}');
+        print('IS AUTHENTICATED: ${isAuthenticated.value}');
+        print('==================================');
+
         // ------------------------------------------------------
-        // FINAL AUTH CHECK
+        // REGISTER FCM AFTER SUCCESSFUL LOGIN
         // ------------------------------------------------------
 
-        print('========== FINAL AUTH STATE ==========');
-        print(
-          'ACCESS TOKEN AVAILABLE: '
-          '${accessToken != null}',
-        );
-        print(
-          'ACCESS TOKEN LENGTH: '
-          '${accessToken?.length ?? 0}',
-        );
-        print(
-          'IS LOGGED IN: '
-          '$isLoggedIn',
-        );
-        print(
-          'IS AUTHENTICATED: '
-          '${isAuthenticated.value}',
-        );
-        print('======================================');
+        // Access token is already saved.
+        // Backend device-token registration can now authenticate.
+
+        await _registerFcmTokenSafely();
+
+        // LOG CURRENT USER ID AND FCM TOKEN LAST 15 CHARACTERS
+        await FcmNotificationService.instance.logCurrentUserAndFcmToken();
+
+        // ------------------------------------------------------
+        // RETURN SUCCESS
+        // ------------------------------------------------------
 
         return {
           'success': true,
@@ -293,9 +255,9 @@ class AuthController extends GetxController {
         };
       }
 
-      // ========================================================
+      // --------------------------------------------------------
       // OTP FAILED
-      // ========================================================
+      // --------------------------------------------------------
 
       return {
         'success': false,
@@ -318,9 +280,6 @@ class AuthController extends GetxController {
   Future<Map<String, dynamic>> refreshAccessToken() async {
     try {
       final token = accessToken;
-
-      // IMPORTANT:
-      // token is nullable, therefore we check it first.
 
       if (token == null || token.isEmpty) {
         return {'success': false, 'message': 'Access token not available'};
@@ -367,6 +326,7 @@ class AuthController extends GetxController {
 
   // ============================================================
   // GET CURRENT USER
+  // GET /auth/me
   // ============================================================
 
   Future<Map<String, dynamic>> getCurrentUser() async {
@@ -379,6 +339,8 @@ class AuthController extends GetxController {
 
       final uri = Uri.parse('$baseUrl/auth/me');
 
+      print('========== GET CURRENT USER ==========');
+
       final response = await http.get(
         uri,
         headers: {
@@ -390,16 +352,67 @@ class AuthController extends GetxController {
 
       final data = _decodeResponse(response);
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      print('STATUS: ${response.statusCode}');
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data is Map &&
+          data['success'] == true) {
         final user = _extractUser(data);
 
-        if (user != null) {
-          currentUser.value = user;
-
-          await _storage.write(userKey, user);
+        if (user == null) {
+          return {
+            'success': false,
+            'message': 'User data missing from server response',
+            'data': data,
+          };
         }
 
-        return {'success': true, 'data': data, 'user': user};
+        // ------------------------------------------------------
+        // UPDATE CURRENT USER
+        // ------------------------------------------------------
+
+        currentUser.value = user;
+
+        await _storage.write(userKey, user);
+
+        // ------------------------------------------------------
+        // UPDATE AUTH STATE
+        // ------------------------------------------------------
+
+        isAuthenticated.value = true;
+
+        // ------------------------------------------------------
+        // REGISTER FCM FOR RESTORED SESSION
+        // ------------------------------------------------------
+
+        // This handles users who reopen the app with an
+        // existing authenticated session without logging in again.
+
+        await _registerFcmTokenSafely();
+
+        // LOG CURRENT USER ID AND FCM TOKEN LAST 15 CHARACTERS
+        await FcmNotificationService.instance.logCurrentUserAndFcmToken();
+
+        // ------------------------------------------------------
+        // ONBOARDING STATUS
+        // ------------------------------------------------------
+
+        final onboardingCompleted =
+            user['onboarding_completed'] == true ||
+            user['onboarding_completed'] == 1 ||
+            user['onboarding_completed']?.toString().toLowerCase() == 'true';
+
+        print('✅ CURRENT USER FETCHED');
+        print('ONBOARDING COMPLETED: $onboardingCompleted');
+        print('======================================');
+
+        return {
+          'success': true,
+          'data': data,
+          'user': user,
+          'onboarding_completed': onboardingCompleted,
+        };
       }
 
       return {
@@ -408,6 +421,8 @@ class AuthController extends GetxController {
         'data': data,
       };
     } catch (e) {
+      print('❌ GET CURRENT USER ERROR: $e');
+
       return {'success': false, 'message': _networkErrorMessage(e)};
     }
   }
@@ -417,6 +432,25 @@ class AuthController extends GetxController {
   // ============================================================
 
   Future<bool> logout() async {
+    // ----------------------------------------------------------
+    // 1. UNREGISTER FCM TOKEN BEFORE CLEARING ACCESS TOKEN
+    // ----------------------------------------------------------
+
+    try {
+      print('📡 Removing FCM device token...');
+
+      await FcmNotificationService.instance.unregisterCurrentTokenFromBackend();
+
+      print('✅ FCM logout cleanup completed');
+    } catch (e) {
+      // FCM failure must never block logout.
+      print('⚠️ FCM logout cleanup failed: $e');
+    }
+
+    // ----------------------------------------------------------
+    // 2. LOGOUT FROM BACKEND
+    // ----------------------------------------------------------
+
     try {
       final token = accessToken;
 
@@ -432,10 +466,14 @@ class AuthController extends GetxController {
           },
         );
       }
-    } catch (_) {
-      // Even if server logout fails,
-      // clear local session.
+    } catch (e) {
+      // Continue local logout even if backend is unavailable.
+      print('⚠️ Backend logout failed: $e');
     }
+
+    // ----------------------------------------------------------
+    // 3. CLEAR LOCAL SESSION
+    // ----------------------------------------------------------
 
     await _storage.remove(accessTokenKey);
     await _storage.remove(refreshTokenKey);
@@ -446,7 +484,7 @@ class AuthController extends GetxController {
 
     print('========== LOGOUT ==========');
     print('AUTH SESSION CLEARED');
-    print('================================');
+    print('============================');
 
     return true;
   }
@@ -468,25 +506,14 @@ class AuthController extends GetxController {
 
     if (storedUser is Map) {
       currentUser.value = Map<String, dynamic>.from(storedUser);
+    } else {
+      currentUser.value = null;
     }
 
     print('========== STORED SESSION ==========');
-    print(
-      'TOKEN EXISTS: '
-      '${token != null}',
-    );
-    print(
-      'TOKEN LENGTH: '
-      '${token?.length ?? 0}',
-    );
-    print(
-      'LOGGED IN: '
-      '${token != null && token.isNotEmpty}',
-    );
-    print(
-      'USER EXISTS: '
-      '${storedUser != null}',
-    );
+    print('TOKEN EXISTS: ${token != null}');
+    print('LOGGED IN: ${isAuthenticated.value}');
+    print('USER EXISTS: ${storedUser != null}');
     print('====================================');
   }
 
@@ -507,7 +534,7 @@ class AuthController extends GetxController {
   }
 
   // ============================================================
-  // MESSAGE
+  // EXTRACT MESSAGE
   // ============================================================
 
   String? _extractMessage(dynamic data) {
@@ -531,7 +558,7 @@ class AuthController extends GetxController {
   }
 
   // ============================================================
-  // ACCESS TOKEN
+  // EXTRACT ACCESS TOKEN
   // ============================================================
 
   String? _extractAccessToken(dynamic data) {
@@ -539,138 +566,71 @@ class AuthController extends GetxController {
       return null;
     }
 
-    // ============================================================
-    // DIRECT TOKEN
-    // ============================================================
+    // ----------------------------------------------------------
+    // TOP-LEVEL TOKEN FIELDS
+    // ----------------------------------------------------------
 
-    if (data['token'] is String) {
-      final token = data['token'].toString().trim();
+    final directToken = _firstNonEmptyString([
+      data['token'],
+      data['accessToken'],
+      data['access_token'],
+    ]);
 
-      if (token.isNotEmpty) {
-        return token;
-      }
+    if (directToken != null) {
+      return directToken;
     }
 
-    // ============================================================
-    // DIRECT ACCESS TOKEN
-    // ============================================================
-
-    if (data['accessToken'] is String) {
-      final token = data['accessToken'].toString().trim();
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    if (data['access_token'] is String) {
-      final token = data['access_token'].toString().trim();
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    // ============================================================
+    // ----------------------------------------------------------
     // NESTED DATA
-    // ============================================================
+    // ----------------------------------------------------------
 
     final nested = data['data'];
 
     if (nested is Map) {
-      // Backend format:
-      // data: {
-      //   token: "..."
-      // }
+      final nestedToken = _firstNonEmptyString([
+        nested['token'],
+        nested['accessToken'],
+        nested['access_token'],
+      ]);
 
-      if (nested['token'] is String) {
-        final token = nested['token'].toString().trim();
-
-        if (token.isNotEmpty) {
-          return token;
-        }
+      if (nestedToken != null) {
+        return nestedToken;
       }
 
-      // data.accessToken
-      if (nested['accessToken'] is String) {
-        final token = nested['accessToken'].toString().trim();
+      // --------------------------------------------------------
+      // NESTED DATA.TOKENS
+      // --------------------------------------------------------
 
-        if (token.isNotEmpty) {
+      final nestedTokens = nested['tokens'];
+
+      if (nestedTokens is Map) {
+        final token = _firstNonEmptyString([
+          nestedTokens['token'],
+          nestedTokens['accessToken'],
+          nestedTokens['access_token'],
+        ]);
+
+        if (token != null) {
           return token;
-        }
-      }
-
-      // data.access_token
-      if (nested['access_token'] is String) {
-        final token = nested['access_token'].toString().trim();
-
-        if (token.isNotEmpty) {
-          return token;
-        }
-      }
-
-      // ==========================================================
-      // NESTED TOKENS
-      // ==========================================================
-
-      final tokens = nested['tokens'];
-
-      if (tokens is Map) {
-        if (tokens['token'] is String) {
-          final token = tokens['token'].toString().trim();
-
-          if (token.isNotEmpty) {
-            return token;
-          }
-        }
-
-        if (tokens['accessToken'] is String) {
-          final token = tokens['accessToken'].toString().trim();
-
-          if (token.isNotEmpty) {
-            return token;
-          }
-        }
-
-        if (tokens['access_token'] is String) {
-          final token = tokens['access_token'].toString().trim();
-
-          if (token.isNotEmpty) {
-            return token;
-          }
         }
       }
     }
 
-    // ============================================================
+    // ----------------------------------------------------------
     // TOP-LEVEL TOKENS
-    // ============================================================
+    // ----------------------------------------------------------
 
     final tokens = data['tokens'];
 
     if (tokens is Map) {
-      if (tokens['token'] is String) {
-        final token = tokens['token'].toString().trim();
+      final token = _firstNonEmptyString([
+        tokens['token'],
+        tokens['accessToken'],
+        tokens['access_token'],
+      ]);
 
-        if (token.isNotEmpty) {
-          return token;
-        }
-      }
-
-      if (tokens['accessToken'] is String) {
-        final token = tokens['accessToken'].toString().trim();
-
-        if (token.isNotEmpty) {
-          return token;
-        }
-      }
-
-      if (tokens['access_token'] is String) {
-        final token = tokens['access_token'].toString().trim();
-
-        if (token.isNotEmpty) {
-          return token;
-        }
+      if (token != null) {
+        return token;
       }
     }
 
@@ -678,7 +638,7 @@ class AuthController extends GetxController {
   }
 
   // ============================================================
-  // REFRESH TOKEN
+  // EXTRACT REFRESH TOKEN
   // ============================================================
 
   String? _extractRefreshToken(dynamic data) {
@@ -687,93 +647,83 @@ class AuthController extends GetxController {
     }
 
     // ----------------------------------------------------------
-    // DIRECT
+    // TOP-LEVEL REFRESH TOKEN
     // ----------------------------------------------------------
 
-    if (data['refreshToken'] is String) {
-      final token = data['refreshToken'].toString().trim();
+    final directToken = _firstNonEmptyString([
+      data['refreshToken'],
+      data['refresh_token'],
+    ]);
 
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    if (data['refresh_token'] is String) {
-      final token = data['refresh_token'].toString().trim();
-
-      if (token.isNotEmpty) {
-        return token;
-      }
+    if (directToken != null) {
+      return directToken;
     }
 
     // ----------------------------------------------------------
-    // data
+    // NESTED DATA
     // ----------------------------------------------------------
 
     final nested = data['data'];
 
     if (nested is Map) {
-      if (nested['refreshToken'] is String) {
-        final token = nested['refreshToken'].toString().trim();
+      final nestedToken = _firstNonEmptyString([
+        nested['refreshToken'],
+        nested['refresh_token'],
+      ]);
 
-        if (token.isNotEmpty) {
-          return token;
-        }
-      }
-
-      if (nested['refresh_token'] is String) {
-        final token = nested['refresh_token'].toString().trim();
-
-        if (token.isNotEmpty) {
-          return token;
-        }
+      if (nestedToken != null) {
+        return nestedToken;
       }
 
       // --------------------------------------------------------
-      // data.tokens
+      // NESTED DATA.TOKENS
       // --------------------------------------------------------
 
       final nestedTokens = nested['tokens'];
 
       if (nestedTokens is Map) {
-        if (nestedTokens['refreshToken'] is String) {
-          final token = nestedTokens['refreshToken'].toString().trim();
+        final token = _firstNonEmptyString([
+          nestedTokens['refreshToken'],
+          nestedTokens['refresh_token'],
+        ]);
 
-          if (token.isNotEmpty) {
-            return token;
-          }
-        }
-
-        if (nestedTokens['refresh_token'] is String) {
-          final token = nestedTokens['refresh_token'].toString().trim();
-
-          if (token.isNotEmpty) {
-            return token;
-          }
+        if (token != null) {
+          return token;
         }
       }
     }
 
     // ----------------------------------------------------------
-    // tokens
+    // TOP-LEVEL TOKENS
     // ----------------------------------------------------------
 
     final tokens = data['tokens'];
 
     if (tokens is Map) {
-      if (tokens['refreshToken'] is String) {
-        final token = tokens['refreshToken'].toString().trim();
+      final token = _firstNonEmptyString([
+        tokens['refreshToken'],
+        tokens['refresh_token'],
+      ]);
 
-        if (token.isNotEmpty) {
-          return token;
-        }
+      if (token != null) {
+        return token;
       }
+    }
 
-      if (tokens['refresh_token'] is String) {
-        final token = tokens['refresh_token'].toString().trim();
+    return null;
+  }
 
-        if (token.isNotEmpty) {
-          return token;
+  // ============================================================
+  // HELPER: FIRST NON-EMPTY STRING
+  // ============================================================
+
+  String? _firstNonEmptyString(List<dynamic> values) {
+    for (final value in values) {
+      if (value is String) {
+        final trimmed = value.trim();
+
+        if (trimmed.isNotEmpty) {
+          return trimmed;
         }
       }
     }
@@ -782,7 +732,7 @@ class AuthController extends GetxController {
   }
 
   // ============================================================
-  // USER
+  // EXTRACT USER
   // ============================================================
 
   Map<String, dynamic>? _extractUser(dynamic data) {
@@ -796,10 +746,8 @@ class AuthController extends GetxController {
 
     final nested = data['data'];
 
-    if (nested is Map) {
-      if (nested['user'] is Map) {
-        return Map<String, dynamic>.from(nested['user']);
-      }
+    if (nested is Map && nested['user'] is Map) {
+      return Map<String, dynamic>.from(nested['user']);
     }
 
     return null;

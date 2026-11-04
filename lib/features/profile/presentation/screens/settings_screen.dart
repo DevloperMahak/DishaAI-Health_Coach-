@@ -26,7 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // LOCAL UI STATE (Synced with Controller)
   // ==============================================================
   bool _pushNotifications = true;
-  bool _microphoneAccess = false; // Replaced darkMode
+  bool _microphoneAccess = false;
   String _selectedLanguage = 'en';
   String _selectedUnitSystem = 'metric';
   bool _isInitialized = false;
@@ -75,15 +75,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (success && mounted) {
-      setState(() {
-        _selectedLanguage = lang;
-        _pushNotifications = push;
-        _microphoneAccess = mic;
-        _selectedUnitSystem = unit;
-      });
+      _syncWithController(); // Ensure local state fully syncs with controller response model
 
       Get.snackbar(
-        "Settings Updated".tr, // Example of GetX Translation
+        "Settings Updated".tr,
         "Your preferences have been saved successfully.".tr,
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: AppColors.surface,
@@ -125,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         title: Text(
-          "Settings".tr, // Localized String
+          "Settings".tr,
           style: const TextStyle(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.bold,
@@ -133,7 +128,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       body: Obx(() {
-        // Sync values if controller fetches data after initial load
         if (!_isInitialized && _settingsController.settings.value != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _syncWithController();
@@ -155,7 +149,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Section: Preferences
                   _buildSectionHeader("Preferences".tr),
                   const SizedBox(height: 12),
 
@@ -289,7 +282,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 30),
 
-                  // Section: Permissions & Notifications
                   _buildSectionHeader("Permissions & Notifications".tr),
                   const SizedBox(height: 12),
 
@@ -331,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Microphone Access Switch (Replaced Dark Mode)
+                  // Microphone Access Switch
                   _buildTileContainer(
                     child: SwitchListTile(
                       contentPadding: const EdgeInsets.symmetric(
@@ -362,34 +354,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       inactiveThumbColor: Colors.white,
                       inactiveTrackColor: Colors.white24,
                       onChanged: (val) async {
-                        if (val == true) {
-                          // Try to request OS permission
-                          final granted = await _settingsController
-                              .requestAndSaveMicrophoneAccess();
+                        // 1. Optimistically update the UI immediately
+                        setState(() => _microphoneAccess = val);
 
-                          if (granted) {
-                            setState(() => _microphoneAccess = true);
-                          } else {
-                            // User denied it at OS level, revert switch and warn them
-                            setState(() => _microphoneAccess = false);
-                            Get.snackbar(
-                              "Permission Denied".tr,
-                              "Please enable microphone access in your device settings."
-                                  .tr,
-                              snackPosition: SnackPosition.BOTTOM,
-                              backgroundColor: AppColors.surface,
-                              colorText: Colors.redAccent,
-                            );
+                        if (val == true) {
+                          try {
+                            final status = await Permission.microphone
+                                .request();
+                            final granted = status.isGranted;
+
+                            if (granted) {
+                              // 2. Permission granted, tell backend
+                              await _updateSettings(microphoneAccess: true);
+                            } else {
+                              // 3. Permission denied, revert the UI toggle
+                              if (mounted) {
+                                setState(() => _microphoneAccess = false);
+                              }
+                              Get.snackbar(
+                                "Permission Denied".tr,
+                                "Please enable microphone access in your device settings."
+                                    .tr,
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: AppColors.surface,
+                                colorText: Colors.redAccent,
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              setState(() => _microphoneAccess = false);
+                            }
                           }
                         } else {
-                          // Turning it off just updates our backend preference
-                          _updateSettings(microphoneAccess: false);
+                          // 4. User disabled it, tell backend
+                          await _updateSettings(microphoneAccess: false);
                         }
                       },
                     ),
                   ),
 
-                  // Loading indicator overlay if updating
                   if (_settingsController.isUpdating.value) ...[
                     const SizedBox(height: 30),
                     const Center(

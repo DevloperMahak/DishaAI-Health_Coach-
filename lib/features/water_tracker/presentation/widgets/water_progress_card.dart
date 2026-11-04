@@ -24,9 +24,22 @@ class WaterProgressCard extends StatefulWidget {
 
 class _WaterProgressCardState extends State<WaterProgressCard>
     with SingleTickerProviderStateMixin {
+  // ===============================================================
+  // ANIMATION CONTROLLER
+  // ===============================================================
+
   late final AnimationController _controller;
 
-  late final Animation<double> _animation;
+  // IMPORTANT:
+  // This MUST NOT be "late final".
+  //
+  // didUpdateWidget() needs to replace the animation whenever the
+  // water progress changes.
+  late Animation<double> _animation;
+
+  // ===============================================================
+  // INIT
+  // ===============================================================
 
   @override
   void initState() {
@@ -38,28 +51,55 @@ class _WaterProgressCardState extends State<WaterProgressCard>
     );
 
     _animation = Tween<double>(
-      begin: 0,
-      end: widget.progress,
+      begin: 0.0,
+      end: _safeProgress(widget.progress),
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     _controller.forward();
   }
 
+  // ===============================================================
+  // WIDGET UPDATE
+  // ===============================================================
+
   @override
   void didUpdateWidget(covariant WaterProgressCard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    // Only animate when the actual progress changes.
     if (oldWidget.progress != widget.progress) {
-      _animation = Tween<double>(begin: _animation.value, end: widget.progress)
-          .animate(
-            CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-          );
+      final double currentValue = _animation.value;
+      final double newProgress = _safeProgress(widget.progress);
 
+      // Replace the animation.
+      //
+      // This is now legal because _animation is not "final".
+      _animation = Tween<double>(begin: currentValue, end: newProgress).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+      );
+
+      // Restart the animation from the current visual value.
       _controller
         ..reset()
         ..forward();
     }
   }
+
+  // ===============================================================
+  // SAFE PROGRESS
+  // ===============================================================
+
+  double _safeProgress(double value) {
+    if (value.isNaN || value.isInfinite) {
+      return 0.0;
+    }
+
+    return value.clamp(0.0, 1.0).toDouble();
+  }
+
+  // ===============================================================
+  // DISPOSE
+  // ===============================================================
 
   @override
   void dispose() {
@@ -67,25 +107,38 @@ class _WaterProgressCardState extends State<WaterProgressCard>
     super.dispose();
   }
 
+  // ===============================================================
+  // RESPONSIVE SCALE
+  // ===============================================================
+
   double _scale(double width) {
     return (width / 390).clamp(.88, 1.15);
   }
 
+  // ===============================================================
+  // FORMAT WATER
+  // ===============================================================
+
   String _format(int ml) {
     if (ml >= 1000) {
-      final litre = ml / 1000;
-      return "${litre.toStringAsFixed(litre % 1 == 0 ? 0 : 1)} L";
+      final double litre = ml / 1000;
+
+      return '${litre.toStringAsFixed(litre % 1 == 0 ? 0 : 1)} L';
     }
 
-    return "$ml ml";
+    return '$ml ml';
   }
+
+  // ===============================================================
+  // BUILD
+  // ===============================================================
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final scale = _scale(width);
+    final double width = MediaQuery.sizeOf(context).width;
+    final double scale = _scale(width);
 
-    final remaining = (widget.dailyGoal - widget.currentIntake).clamp(
+    final int remaining = (widget.dailyGoal - widget.currentIntake).clamp(
       0,
       widget.dailyGoal,
     );
@@ -107,12 +160,12 @@ class _WaterProgressCardState extends State<WaterProgressCard>
       ),
       child: AnimatedBuilder(
         animation: _animation,
-        builder: (_, __) {
+        builder: (context, child) {
           return Column(
             children: [
-              //--------------------------------------------------
+              // =======================================================
               // CIRCULAR PROGRESS
-              //--------------------------------------------------
+              // =======================================================
               SizedBox(
                 width: 240 * scale,
                 height: 240 * scale,
@@ -149,7 +202,7 @@ class _WaterProgressCardState extends State<WaterProgressCard>
                         SizedBox(height: 18 * scale),
 
                         Text(
-                          "${widget.percentage}%",
+                          '${widget.percentage}%',
                           style: TextStyle(
                             fontSize: (42 * scale).clamp(34.0, 48.0),
                             fontWeight: FontWeight.w900,
@@ -160,7 +213,7 @@ class _WaterProgressCardState extends State<WaterProgressCard>
                         SizedBox(height: 6 * scale),
 
                         Text(
-                          "Hydration",
+                          'Hydration',
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: (14 * scale).clamp(12.0, 16.0),
@@ -175,14 +228,14 @@ class _WaterProgressCardState extends State<WaterProgressCard>
 
               SizedBox(height: 28 * scale),
 
-              //--------------------------------------------------
-              // SUMMARY CARDS
-              //--------------------------------------------------
+              // =======================================================
+              // SUMMARY ROW 1
+              // =======================================================
               Row(
                 children: [
                   Expanded(
                     child: _InfoCard(
-                      title: "Current",
+                      title: 'Current',
                       value: _format(widget.currentIntake),
                       icon: Icons.local_drink_rounded,
                     ),
@@ -192,7 +245,7 @@ class _WaterProgressCardState extends State<WaterProgressCard>
 
                   Expanded(
                     child: _InfoCard(
-                      title: "Goal",
+                      title: 'Goal',
                       value: _format(widget.dailyGoal),
                       icon: Icons.flag_rounded,
                     ),
@@ -202,11 +255,14 @@ class _WaterProgressCardState extends State<WaterProgressCard>
 
               SizedBox(height: 16 * scale),
 
+              // =======================================================
+              // SUMMARY ROW 2
+              // =======================================================
               Row(
                 children: [
                   Expanded(
                     child: _InfoCard(
-                      title: "Remaining",
+                      title: 'Remaining',
                       value: _format(remaining),
                       icon: Icons.water_drop_outlined,
                     ),
@@ -216,12 +272,12 @@ class _WaterProgressCardState extends State<WaterProgressCard>
 
                   Expanded(
                     child: _InfoCard(
-                      title: "Status",
+                      title: 'Status',
                       value: widget.percentage >= 100
-                          ? "Completed"
+                          ? 'Completed'
                           : widget.percentage >= 70
-                          ? "On Track"
-                          : "Keep Going",
+                          ? 'On Track'
+                          : 'Keep Going',
                       icon: widget.percentage >= 100
                           ? Icons.emoji_events_rounded
                           : Icons.trending_up_rounded,
@@ -232,9 +288,9 @@ class _WaterProgressCardState extends State<WaterProgressCard>
 
               SizedBox(height: 24 * scale),
 
-              //--------------------------------------------------
+              // =======================================================
               // MOTIVATION CARD
-              //--------------------------------------------------
+              // =======================================================
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.all(18 * scale),
@@ -270,8 +326,8 @@ class _WaterProgressCardState extends State<WaterProgressCard>
                         children: [
                           Text(
                             widget.percentage >= 100
-                                ? "Goal Achieved 🎉"
-                                : "AI Hydration Tip",
+                                ? 'Goal Achieved 🎉'
+                                : 'AI Hydration Tip',
                             style: TextStyle(
                               fontSize: (16 * scale).clamp(15.0, 18.0),
                               fontWeight: FontWeight.w700,
@@ -287,8 +343,8 @@ class _WaterProgressCardState extends State<WaterProgressCard>
                                 : remaining <= 250
                                 ? "You're almost there. One more glass of water will complete today's goal."
                                 : remaining <= 750
-                                ? "Great progress! Continue drinking water regularly over the next few hours."
-                                : "Start with a glass of water now and sip consistently throughout the day instead of drinking a large amount at once.",
+                                ? 'Great progress! Continue drinking water regularly over the next few hours.'
+                                : 'Start with a glass of water now and sip consistently throughout the day instead of drinking a large amount at once.',
                             style: TextStyle(
                               height: 1.55,
                               color: AppColors.textSecondary,
@@ -308,9 +364,10 @@ class _WaterProgressCardState extends State<WaterProgressCard>
     );
   }
 }
-//--------------------------------------------------------------
+
+// ===================================================================
 // INFO CARD
-//--------------------------------------------------------------
+// ===================================================================
 
 class _InfoCard extends StatelessWidget {
   const _InfoCard({
@@ -364,39 +421,42 @@ class _InfoCard extends StatelessWidget {
     );
   }
 }
-//--------------------------------------------------------------
+
+// ===================================================================
 // CIRCULAR PROGRESS PAINTER
-//--------------------------------------------------------------
+// ===================================================================
 
 class _WaterProgressPainter extends CustomPainter {
-  final double progress;
+  const _WaterProgressPainter({required this.progress});
 
-  _WaterProgressPainter({required this.progress});
+  final double progress;
 
   @override
   void paint(Canvas canvas, Size size) {
-    const startAngle = -math.pi / 2;
+    const double startAngle = -math.pi / 2;
 
-    final rect = Offset.zero & size;
+    final Rect rect = Offset.zero & size;
 
-    final backgroundPaint = Paint()
+    final Paint backgroundPaint = Paint()
       ..color = AppColors.primary.withOpacity(.10)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 14
       ..strokeCap = StrokeCap.round;
 
-    final progressPaint = Paint()
+    final Paint progressPaint = Paint()
       ..color = AppColors.primary
       ..style = PaintingStyle.stroke
       ..strokeWidth = 14
       ..strokeCap = StrokeCap.round;
 
+    // Background circle.
     canvas.drawArc(rect, startAngle, math.pi * 2, false, backgroundPaint);
 
+    // Progress arc.
     canvas.drawArc(
       rect,
       startAngle,
-      math.pi * 2 * progress,
+      math.pi * 2 * progress.clamp(0.0, 1.0),
       false,
       progressPaint,
     );

@@ -1,7 +1,11 @@
+import 'package:disha_ai/features/about/about_rhea_ai_screen.dart';
+import 'package:disha_ai/features/ai_health_coach/presentation/controllers/ai_controller.dart';
 import 'package:disha_ai/features/ai_health_coach/presentation/screens/ai_health_coach_screen.dart';
 import 'package:disha_ai/features/ai_health_coach/presentation/screens/rheaai_call_screen.dart';
+import 'package:disha_ai/features/dashboard/presentation/controllers/dashboard_controller.dart';
 import 'package:disha_ai/features/dashboard/presentation/screens/addiction_screen.dart';
 import 'package:disha_ai/features/dashboard/presentation/screens/explain_medical_report_screen.dart';
+import 'package:disha_ai/features/dashboard/presentation/screens/generated_plan_dashboard_screen.dart';
 import 'package:disha_ai/features/dashboard/presentation/screens/meals/meals_home_screen.dart';
 import 'package:disha_ai/features/dashboard/presentation/screens/mood_checkin_screen.dart';
 import 'package:disha_ai/features/dashboard/presentation/screens/sexual_wellness_screen.dart';
@@ -36,6 +40,9 @@ import 'package:disha_ai/features/profile/presentation/screens/profile_screen.da
 import 'package:disha_ai/features/profile/presentation/screens/review_screen.dart';
 import 'package:disha_ai/features/profile/presentation/screens/settings_screen.dart';
 import 'package:disha_ai/features/progress/presentation/screens/progress_screen.dart';
+import 'package:disha_ai/features/reminders/presentation/screens/create_reminder_screen.dart';
+import 'package:disha_ai/features/reminders/presentation/screens/reminder_settings_screen.dart';
+import 'package:disha_ai/features/reminders/presentation/screens/reminders_screen.dart';
 import 'package:disha_ai/features/water_tracker/presentation/screens/water_tracker_screen.dart';
 import 'package:disha_ai/features/workout/presentation/screens/workout_home_screen.dart';
 import 'package:get/get.dart';
@@ -135,10 +142,30 @@ class AppPages {
       page: () => const GeneratedPlanScreen(),
     ),
 
+    GetPage(
+      name: AppRoutes.generatedPlanDashboard,
+      page: () => const GeneratedPlanDashboardScreen(),
+    ),
+
     // ============================================================
     // DASHBOARD
     // ============================================================
-    GetPage(name: AppRoutes.dashboard, page: () => const DashboardScreen()),
+    GetPage(
+      name: AppRoutes.dashboard,
+      page: () => const DashboardScreen(),
+      binding: BindingsBuilder(() {
+        if (!Get.isRegistered<DashboardController>()) {
+          Get.lazyPut<DashboardController>(
+            () => DashboardController(),
+            fenix: true,
+          );
+        }
+
+        if (!Get.isRegistered<AiController>()) {
+          Get.lazyPut<AiController>(() => AiController(), fenix: true);
+        }
+      }),
+    ),
 
     GetPage(name: AppRoutes.progress, page: () => const ProgressScreen()),
 
@@ -260,5 +287,22 @@ class AppPages {
       page: () => const ReviewScreen(),
       transition: Transition.cupertino,
     ),
+
+    // ============================================================
+    // REMINDERS
+    // ============================================================
+    GetPage(name: AppRoutes.reminders, page: () => const RemindersScreen()),
+
+    GetPage(
+      name: AppRoutes.createReminder,
+      page: () => const CreateReminderScreen(),
+    ),
+
+    GetPage(
+      name: AppRoutes.reminderSettings,
+      page: () => const ReminderSettingsScreen(),
+    ),
+
+    GetPage(name: AppRoutes.about, page: () => const AboutRheaAiScreen()),
   ];
 }

@@ -52,7 +52,18 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
       _controller = Get.put(HealthProfileController());
     }
 
-    _loadExistingData();
+    if (_controller.healthProfile.value != null) {
+      _loadExistingData();
+    } else {
+      _initializeData();
+    }
+  }
+
+  Future<void> _initializeData() async {
+    await _controller.getHealthProfile();
+    if (mounted) {
+      _loadExistingData();
+    }
   }
 
   void _loadExistingData() {
@@ -72,9 +83,41 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
         _sleepHoursController.text = _formatNumber(profile.sleepHoursTarget!);
       }
 
-      _activityLevel = _displayActivityLevel(profile.activityLevel);
-      _stressLevel = _displayStressLevel(profile.stressLevel);
-      _dietType = _displayDietType(profile.dietType);
+      setState(() {
+        _activityLevel = _displayActivityLevel(profile.activityLevel);
+        _stressLevel = _displayStressLevel(profile.stressLevel);
+        _dietType = _displayDietType(profile.dietType);
+      });
+    }
+  }
+
+  // --- Robust Diet Type Mapping ---
+  String? _displayDietType(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+
+    final normalized = value.toLowerCase().replaceAll('-', '_').trim();
+
+    switch (normalized) {
+      case 'vegetarian':
+      case 'veg':
+        return 'Vegetarian';
+
+      case 'non_vegetarian':
+      case 'non_veg':
+      case 'nonveg':
+        return 'Non-Vegetarian';
+
+      case 'eggetarian':
+      case 'eggitarian':
+      case 'egg':
+      case 'egg_vegetarian':
+        return 'Eggitarian';
+
+      case 'vegan':
+        return 'Vegan';
+
+      default:
+        return null;
     }
   }
 
@@ -139,26 +182,6 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
     return value.toLowerCase();
   }
 
-  // --- Diet Type Mapping ---
-  String? _displayDietType(String? value) {
-    if (value == null) return null;
-    switch (value.toLowerCase()) {
-      case 'vegetarian':
-        return 'Vegetarian';
-      case 'vegan':
-        return 'Vegan';
-      case 'non_vegetarian':
-      case 'non-vegetarian':
-        return 'Non-Vegetarian';
-      case 'pescatarian':
-        return 'Pescatarian';
-      case 'keto':
-        return 'Keto';
-      default:
-        return 'Vegetarian';
-    }
-  }
-
   String _apiDietType(String? value) {
     if (value == null) return 'vegetarian';
     if (value == 'Non-Vegetarian') return 'non_vegetarian';
@@ -200,14 +223,12 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
 
-    // 1. Parse Numbers
     final heightCm = double.tryParse(_heightController.text.trim()) ?? 0;
     final weightKg = double.tryParse(_weightController.text.trim()) ?? 0;
     final targetWeightKg =
         double.tryParse(_targetWeightController.text.trim()) ?? 0;
     final sleepHours = double.tryParse(_sleepHoursController.text.trim()) ?? 0;
 
-    // 2. Validate
     if (heightCm < 50 || heightCm > 300) {
       _showErrorMessage("Please enter a realistic height (cm).");
       return;
@@ -229,10 +250,8 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
       _isSaving = true;
     });
 
-    // 3. Fetch existing profile to retain uneditable data (Personal Info)
     final profile = _controller.healthProfile.value;
 
-    // 4. API Call
     final success = await _controller.updateHealthProfile(
       name: profile?.name ?? "User",
       age: profile?.age ?? 25,
@@ -244,7 +263,6 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
       sleepHoursTarget: sleepHours,
       stressLevel: _apiStressLevel(_stressLevel),
       dietType: _apiDietType(_dietType),
-      // Preserve existing arrays
       goals: profile?.goals ?? [],
       conditions: profile?.conditions ?? [],
       challenges: profile?.challenges ?? [],
@@ -272,9 +290,6 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
     }
   }
 
-  //------------------------------------------------------------
-  // Back Interceptor
-  //------------------------------------------------------------
   Future<bool> _onBack() async {
     if (!_hasChanges) return true;
 
@@ -314,9 +329,6 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
     return result ?? false;
   }
 
-  //------------------------------------------------------------
-  // Dispose
-  //------------------------------------------------------------
   @override
   void dispose() {
     _heightController.dispose();
@@ -326,9 +338,6 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
     super.dispose();
   }
 
-  //------------------------------------------------------------
-  // Build
-  //------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -384,7 +393,6 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
                     children: [
                       _buildSectionTitle("Body Metrics"),
                       const SizedBox(height: 16),
-
                       Row(
                         children: [
                           Expanded(
@@ -405,17 +413,14 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-
                       _buildTextField(
                         label: "Target Weight (kg)",
                         controller: _targetWeightController,
                         icon: Icons.track_changes,
                       ),
-
                       const SizedBox(height: 32),
                       _buildSectionTitle("Lifestyle & Diet"),
                       const SizedBox(height: 16),
-
                       _buildDropdown(
                         label: "Activity Level",
                         value: _activityLevel,
@@ -433,35 +438,30 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
                         },
                       ),
                       const SizedBox(height: 16),
-
                       _buildDropdown(
                         label: "Diet Type",
                         value: _dietType,
                         icon: Icons.restaurant,
                         items: [
                           "Vegetarian",
-                          "Vegan",
                           "Non-Vegetarian",
-                          "Pescatarian",
-                          "Keto",
+                          "Eggitarian",
+                          "Vegan",
                         ],
                         onChanged: (val) {
                           setState(() => _dietType = val);
                           _markChanged();
                         },
                       ),
-
                       const SizedBox(height: 32),
                       _buildSectionTitle("Wellness & Sleep"),
                       const SizedBox(height: 16),
-
                       _buildTextField(
                         label: "Sleep Target (Hours)",
                         controller: _sleepHoursController,
                         icon: Icons.bedtime_outlined,
                       ),
                       const SizedBox(height: 16),
-
                       _buildDropdown(
                         label: "Stress Level",
                         value: _stressLevel,
@@ -472,9 +472,7 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
                           _markChanged();
                         },
                       ),
-
                       const SizedBox(height: 48),
-
                       ProfileSaveButton(
                         isLoading: _isSaving,
                         onPressed: _hasChanges ? _save : null,
@@ -492,9 +490,6 @@ class _EditHealthDataScreenState extends State<EditHealthDataScreen> {
     );
   }
 
-  //------------------------------------------------------------
-  // UI Reusable Widgets
-  //------------------------------------------------------------
   Widget _buildSectionTitle(String title) {
     return Text(
       title,

@@ -1,7 +1,9 @@
+import 'package:disha_ai/features/payment/presentation/controllers/premium_report_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_colors.dart';
-import '../controllers/premium_report_controller.dart';
 
 class UpgradePremiumScreen extends StatelessWidget {
   const UpgradePremiumScreen({super.key});
@@ -102,7 +104,11 @@ class UpgradePremiumScreen extends StatelessWidget {
                   () => ElevatedButton(
                     onPressed: controller.isSubscribing.value
                         ? null
-                        : () => controller.startSubscription(),
+                        : () => controller.startSubscription(
+                            amount: 3.0,
+                            description:
+                                'Monthly AI Health Coaching Subscription',
+                          ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,

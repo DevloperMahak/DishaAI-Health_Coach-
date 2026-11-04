@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../../../app/theme/app_colors.dart';
 
 class HealthSummaryCard extends StatelessWidget {
@@ -46,9 +45,6 @@ class HealthSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          //------------------------------------------------------
-          // HEADER
-          //------------------------------------------------------
           Row(
             children: [
               Container(
@@ -63,9 +59,7 @@ class HealthSummaryCard extends StatelessWidget {
                   color: AppColors.primary,
                 ),
               ),
-
               const SizedBox(width: 14),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,9 +71,7 @@ class HealthSummaryCard extends StatelessWidget {
                         fontSize: (12 * scale).clamp(11.0, 14.0),
                       ),
                     ),
-
                     const SizedBox(height: 2),
-
                     Text(
                       userName,
                       style: TextStyle(
@@ -91,7 +83,6 @@ class HealthSummaryCard extends StatelessWidget {
                   ],
                 ),
               ),
-
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -108,9 +99,7 @@ class HealthSummaryCard extends StatelessWidget {
                       color: Colors.orange,
                       size: 18,
                     ),
-
                     const SizedBox(width: 5),
-
                     Text(
                       "$streakDays Days",
                       style: const TextStyle(
@@ -123,12 +112,7 @@ class HealthSummaryCard extends StatelessWidget {
               ),
             ],
           ),
-
           SizedBox(height: 22 * scale),
-
-          //------------------------------------------------------
-          // METRICS
-          //------------------------------------------------------
           Row(
             children: [
               Expanded(
@@ -138,9 +122,7 @@ class HealthSummaryCard extends StatelessWidget {
                   icon: Icons.favorite_rounded,
                 ),
               ),
-
               SizedBox(width: 14 * scale),
-
               Expanded(
                 child: _InfoCard(
                   title: "Goal",
@@ -150,12 +132,7 @@ class HealthSummaryCard extends StatelessWidget {
               ),
             ],
           ),
-
           SizedBox(height: 18 * scale),
-
-          //------------------------------------------------------
-          // AI MESSAGE
-          //------------------------------------------------------
           Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
@@ -179,9 +156,7 @@ class HealthSummaryCard extends StatelessWidget {
                     size: 20,
                   ),
                 ),
-
                 const SizedBox(width: 12),
-
                 Expanded(
                   child: Text(
                     "You're making great progress. Stay consistent today and you'll reach your weekly target.",
@@ -233,9 +208,7 @@ class _InfoCard extends StatelessWidget {
             ),
             child: Icon(icon, color: AppColors.primary, size: 18),
           ),
-
           const SizedBox(height: 14),
-
           Text(
             title,
             style: const TextStyle(
@@ -243,15 +216,15 @@ class _InfoCard extends StatelessWidget {
               fontSize: 12,
             ),
           ),
-
           const SizedBox(height: 4),
-
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontWeight: FontWeight.w700,
-              fontSize: 20,
+              fontSize: 18,
             ),
           ),
         ],

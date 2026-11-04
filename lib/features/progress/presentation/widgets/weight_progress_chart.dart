@@ -1,33 +1,57 @@
+import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-
 import '../../../../app/theme/app_colors.dart';
 
 class WeightProgressChart extends StatelessWidget {
   const WeightProgressChart({
     super.key,
-    required this.spots,
     required this.currentWeight,
     required this.goalWeight,
+    required this.startingWeight,
+    required this.spots,
+    this.labels = const [],
   });
 
-  final List<FlSpot> spots;
   final double currentWeight;
   final double goalWeight;
+  final double startingWeight;
 
-  double _scale(double width) {
-    return (width / 390).clamp(.88, 1.12);
-  }
-
+  final List<FlSpot> spots;
+  final List<String> labels;
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final scale = _scale(width);
+    // Same calculation used by WeightProgressCard.
+    // Both now use the starting weight returned by Progress API.
 
-    final lostWeight = spots.isNotEmpty ? (spots.first.y - currentWeight) : 0;
+    final double change = currentWeight - startingWeight;
+
+    final String changeTitle = change < -0.0001
+        ? 'Lost'
+        : change > 0.0001
+        ? 'Gained'
+        : 'No Change';
+
+    double lowestValue = min(currentWeight, goalWeight);
+    double highestValue = max(currentWeight, goalWeight);
+    for (final spot in spots) {
+      if (spot.y < lowestValue) lowestValue = spot.y;
+      if (spot.y > highestValue) highestValue = spot.y;
+    }
+    final double safeMinY = lowestValue - 3;
+    final double safeMaxY = highestValue + 3;
+
+    // Use the actual x range so a chart with fewer or more than seven
+    // records does not draw outside its bounds.
+    final double minX = spots.isEmpty
+        ? 0
+        : min(0.0, spots.map((s) => s.x).reduce(min));
+    final double maxX = spots.isEmpty
+        ? 6
+        : max(6.0, spots.map((s) => s.x).reduce(max));
 
     return Container(
-      padding: EdgeInsets.all(20 * scale),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
@@ -43,9 +67,6 @@ class WeightProgressChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          //-------------------------------------------------------
-          // HEADER
-          //-------------------------------------------------------
           Row(
             children: [
               Container(
@@ -60,126 +81,118 @@ class WeightProgressChart extends StatelessWidget {
                   color: AppColors.primary,
                 ),
               ),
-
               const SizedBox(width: 14),
-
-              Expanded(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Weight Progress",
+                      'Weight Progress',
                       style: TextStyle(
-                        fontSize: (18 * scale).clamp(16.0, 20.0),
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-
-                    const SizedBox(height: 4),
-
+                    SizedBox(height: 4),
                     Text(
-                      "Last 7 Days",
+                      'Last 7 Days',
                       style: TextStyle(
-                        fontSize: (12 * scale).clamp(11.0, 14.0),
+                        fontSize: 13,
                         color: AppColors.textSecondary,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
             ],
           ),
-
-          SizedBox(height: 24 * scale),
-
-          //-------------------------------------------------------
-          // CHART
-          //-------------------------------------------------------
+          const SizedBox(height: 24),
           SizedBox(
             height: 220,
             child: LineChart(
               LineChartData(
-                minX: 0,
-                maxX: 6,
-                minY: goalWeight - 5,
-                maxY: currentWeight + 5,
-
+                clipData: const FlClipData.all(),
+                minX: minX,
+                maxX: maxX,
+                minY: safeMinY,
+                maxY: safeMaxY,
                 borderData: FlBorderData(show: false),
-
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  horizontalInterval: 1,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: AppColors.primary.withOpacity(.10),
-                      strokeWidth: 1,
-                    );
-                  },
+                  horizontalInterval: 2,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: AppColors.primary.withOpacity(.10),
+                    strokeWidth: 1,
+                  ),
                 ),
-
                 titlesData: FlTitlesData(
                   topTitles: const AxisTitles(),
                   rightTitles: const AxisTitles(),
-
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 38,
-                      getTitlesWidget: (value, meta) {
-                        return Text(
-                          value.toInt().toString(),
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                          ),
-                        );
-                      },
+                      reservedSize: 40,
+                      getTitlesWidget: (value, meta) => Text(
+                        value.toInt().toString(),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
                     ),
                   ),
-
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
                       interval: 1,
                       getTitlesWidget: (value, meta) {
-                        const days = ["M", "T", "W", "T", "F", "S", "S"];
-
+                        final int index = value.round();
+                        if ((value - index).abs() > 0.001 || index < 0) {
+                          return const SizedBox.shrink();
+                        }
+                        const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+                        final String label =
+                            index < labels.length && labels[index].isNotEmpty
+                            ? labels[index]
+                            : days[index % 7];
                         return Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            days[value.toInt()],
+                            label,
                             style: const TextStyle(
                               color: AppColors.textSecondary,
                               fontSize: 11,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         );
                       },
                     ),
                   ),
                 ),
-
                 lineBarsData: [
                   LineChartBarData(
                     spots: spots,
                     isCurved: true,
                     color: AppColors.primary,
                     barWidth: 5,
-
                     dotData: FlDotData(
                       show: true,
-                      getDotPainter: (spot, percent, barData, index) {
-                        return FlDotCirclePainter(
-                          radius: 5,
-                          color: AppColors.primary,
-                          strokeWidth: 2,
-                          strokeColor: AppColors.background,
-                        );
-                      },
+                      getDotPainter: (spot, percent, barData, index) =>
+                          FlDotCirclePainter(
+                            radius: 5,
+                            color: AppColors.primary,
+                            strokeWidth: 2,
+                            strokeColor: AppColors.background,
+                          ),
                     ),
-
                     belowBarData: BarAreaData(
                       show: true,
                       gradient: LinearGradient(
@@ -197,36 +210,27 @@ class WeightProgressChart extends StatelessWidget {
               ),
             ),
           ),
-
-          SizedBox(height: 22 * scale),
-
-          //-------------------------------------------------------
-          // STATS
-          //-------------------------------------------------------
+          const SizedBox(height: 22),
           Row(
             children: [
               Expanded(
                 child: _StatBox(
-                  title: "Current",
-                  value: "${currentWeight.toStringAsFixed(1)} kg",
+                  title: 'Current',
+                  value: '${currentWeight.toStringAsFixed(1)} kg',
                 ),
               ),
-
-              SizedBox(width: 10 * scale),
-
+              const SizedBox(width: 10),
               Expanded(
                 child: _StatBox(
-                  title: "Goal",
-                  value: "${goalWeight.toStringAsFixed(1)} kg",
+                  title: 'Goal',
+                  value: '${goalWeight.toStringAsFixed(1)} kg',
                 ),
               ),
-
-              SizedBox(width: 10 * scale),
-
+              const SizedBox(width: 10),
               Expanded(
                 child: _StatBox(
-                  title: "Lost",
-                  value: "${lostWeight.toStringAsFixed(1)} kg",
+                  title: changeTitle,
+                  value: '${change.abs().toStringAsFixed(1)} kg',
                 ),
               ),
             ],
@@ -246,7 +250,7 @@ class _StatBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(18),
@@ -260,17 +264,20 @@ class _StatBox extends StatelessWidget {
               color: AppColors.textSecondary,
               fontSize: 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-
           const SizedBox(height: 8),
-
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.bold,
-              fontSize: 17,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+                fontSize: 17,
+              ),
             ),
           ),
         ],

@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
+import 'package:disha_ai/app/theme/app_colors.dart';
 import 'package:disha_ai/features/dashboard/presentation/controllers/task_controller.dart';
-import '../../../../app/theme/app_colors.dart';
+import 'package:disha_ai/features/plan/presentation/controllers/today_progress_controller.dart';
 
 class DailyTaskCard extends StatelessWidget {
   DailyTaskCard({super.key});
 
-  final TaskController _taskController = Get.put(TaskController());
+  final TaskController _taskController = Get.isRegistered<TaskController>()
+      ? Get.find<TaskController>()
+      : Get.put(TaskController());
+
+  final TodayProgressController _todayProgressController =
+      Get.isRegistered<TodayProgressController>()
+      ? Get.find<TodayProgressController>()
+      : Get.put(TodayProgressController());
 
   void _showAddTaskDialog(BuildContext context) {
     final TextEditingController titleController = TextEditingController();
@@ -23,6 +32,7 @@ class DailyTaskCard extends StatelessWidget {
         child: TextField(
           controller: titleController,
           style: const TextStyle(color: AppColors.textPrimary),
+          textInputAction: TextInputAction.done,
           decoration: InputDecoration(
             hintText: "e.g. Evening Walk 20 Mins",
             hintStyle: TextStyle(
@@ -53,21 +63,30 @@ class DailyTaskCard extends StatelessWidget {
           ),
         ),
         onPressed: () async {
-          if (titleController.text.trim().isNotEmpty) {
-            final success = await _taskController.createTask(
-              titleController.text.trim(),
-            );
-            Get.back();
-            if (success) {
-              Get.snackbar(
-                "Success",
-                "Task created successfully!",
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: AppColors.surface,
-                colorText: AppColors.textPrimary,
-              );
-            }
+          final title = titleController.text.trim();
+
+          if (title.isEmpty) {
+            return;
           }
+
+          final success = await _taskController.createTask(title);
+
+          if (!success) {
+            return;
+          }
+
+          // Refresh aggregate progress after creating a task.
+          await _todayProgressController.refreshTodayProgress();
+
+          Get.back();
+
+          Get.snackbar(
+            "Success",
+            "Task created successfully!",
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: AppColors.surface,
+            colorText: AppColors.textPrimary,
+          );
         },
         child: const Text(
           "Add Task",
@@ -99,6 +118,32 @@ class DailyTaskCard extends StatelessWidget {
       default:
         return Icons.task_alt_rounded;
     }
+  }
+
+  Future<void> _toggleTask(int taskId) async {
+    await _taskController.toggleTaskComplete(taskId);
+
+    // Backend is the source of truth for total/completed/pending tasks.
+    await _todayProgressController.refreshTodayProgress();
+  }
+
+  Future<void> _deleteTask(int taskId) async {
+    final success = await _taskController.deleteTask(taskId);
+
+    if (!success) {
+      return;
+    }
+
+    // Refresh progress because total task count changed.
+    await _todayProgressController.refreshTodayProgress();
+
+    Get.snackbar(
+      "Task Deleted",
+      "Removed successfully.",
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: AppColors.surface,
+      colorText: AppColors.textPrimary,
+    );
   }
 
   @override
@@ -151,15 +196,19 @@ class DailyTaskCard extends StatelessWidget {
                         ),
                       );
                     }
+
                     return const SizedBox.shrink();
                   }),
                 ],
               ),
             ],
           ),
+
           const SizedBox(height: 16),
 
-          // LIVE API TASKS OBSERVER
+          // ============================================================
+          // LIVE API TASKS
+          // ============================================================
           Obx(() {
             if (_taskController.tasks.isEmpty) {
               return Container(
@@ -167,6 +216,7 @@ class DailyTaskCard extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Text(
                   "No tasks scheduled for today. Add one above! ✨",
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: tablet ? 15 : 13,
@@ -181,13 +231,15 @@ class DailyTaskCard extends StatelessWidget {
               itemCount: _taskController.tasks.length,
               itemBuilder: (context, index) {
                 final task = _taskController.tasks[index];
+
                 final String subtitleText = task.description ?? "Custom Task";
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
                   child: Dismissible(
-                    key: Key('${task.id}_$index'),
+                    key: ValueKey(task.id),
                     direction: DismissDirection.endToStart,
+
                     background: Container(
                       alignment: Alignment.centerRight,
                       padding: const EdgeInsets.only(right: 20),
@@ -201,22 +253,17 @@ class DailyTaskCard extends StatelessWidget {
                         size: 20,
                       ),
                     ),
-                    onDismissed: (_) {
-                      _taskController.deleteTask(task.id);
-                      Get.snackbar(
-                        "Task Deleted",
-                        "Removed successfully.",
-                        snackPosition: SnackPosition.BOTTOM,
-                      );
+
+                    confirmDismiss: (_) async {
+                      return await _deleteTask(task.id).then((_) => true);
                     },
+
                     child: _taskItem(
                       title: task.title,
                       subtitle: subtitleText,
                       icon: _getTaskIcon(task.type),
                       done: task.isCompleted,
-                      onTap: () {
-                        _taskController.toggleTaskComplete(task.id);
-                      },
+                      onTap: () => _toggleTask(task.id),
                       tablet: tablet,
                     ),
                   ),
@@ -257,13 +304,17 @@ class DailyTaskCard extends StatelessWidget {
                 size: tablet ? 26 : 22,
               ),
             ),
+
             const SizedBox(width: 12),
+
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: tablet ? 16 : 14,
@@ -271,9 +322,13 @@ class DailyTaskCard extends StatelessWidget {
                       decoration: done ? TextDecoration.lineThrough : null,
                     ),
                   ),
+
                   const SizedBox(height: 3),
+
                   Text(
                     subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: tablet ? 14 : 12,
@@ -282,6 +337,9 @@ class DailyTaskCard extends StatelessWidget {
                 ],
               ),
             ),
+
+            const SizedBox(width: 8),
+
             Icon(
               done ? Icons.check_circle : Icons.circle_outlined,
               color: done ? AppColors.primary : AppColors.textSecondary,

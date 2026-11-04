@@ -1,4 +1,6 @@
 import 'package:disha_ai/app/routes/app_routes.dart';
+import 'package:disha_ai/features/dashboard/presentation/controllers/dashboard_controller.dart';
+import 'package:disha_ai/features/dashboard/data/models/quick_action_category_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -8,8 +10,105 @@ import 'quick_action_item.dart';
 class QuickActionsSection extends StatelessWidget {
   const QuickActionsSection({super.key});
 
+  // 💡 Helper mapper to bind API slugs to local assets, colors, and routes
+  Map<String, dynamic> _getMetadataForSlug(String slug) {
+    switch (slug.toLowerCase()) {
+      case 'meditation':
+        return {
+          'image': 'assets/images/meditation.png',
+          'color': Colors.teal,
+          'route': AppRoutes.meditation,
+        };
+      case 'workout':
+        return {
+          'image': 'assets/images/workout.png',
+          'color': Colors.green,
+          'route': AppRoutes.workout,
+        };
+      case 'water':
+        return {
+          'image': 'assets/images/water.png',
+          'color': Colors.blue,
+          'route': AppRoutes.waterTracker,
+        };
+      case 'meals':
+        return {
+          'image': 'assets/images/meals.png',
+          'color': Colors.orange,
+          'route': AppRoutes.meal,
+        };
+      case 'sleep':
+        return {
+          'image': 'assets/images/sleep.png',
+          'color': Colors.deepPurple,
+          'route': AppRoutes.sleep,
+        };
+      case 'progress':
+        return {
+          'image': 'assets/images/progress.png',
+          'color': Colors.amber,
+          'route': AppRoutes.progress,
+        };
+      case 'weight':
+        return {
+          'image': 'assets/images/weight.png',
+          'color': Colors.redAccent,
+          'route': AppRoutes.weight,
+        };
+      case 'vitals':
+        return {
+          'image': 'assets/images/vitals.png',
+          'color': Colors.pink,
+          'route': AppRoutes.vitalsAnalysis,
+        };
+      case 'mood':
+        return {
+          'image': 'assets/images/mood.png',
+          'color': Colors.amber,
+          'route': AppRoutes.mood,
+        };
+      case 'steps':
+        return {
+          'image': 'assets/images/steps.png',
+          'color': Colors.indigo,
+          'route': AppRoutes.steps,
+        };
+      case 'sexual-wellness':
+        return {
+          'image': 'assets/images/sexual_wellness.png',
+          'color': Colors.pinkAccent,
+          'route': AppRoutes.sexualWellness,
+        };
+      case 'addictions':
+        return {
+          'image': 'assets/images/addictions.png',
+          'color': Colors.deepOrange,
+          'route': AppRoutes.addiction,
+        };
+      case 'medical-record':
+        return {
+          'image': 'assets/images/medicine.png',
+          'color': Colors.cyan,
+          'route': AppRoutes.explainReport,
+        };
+      case 'ai-coach':
+        return {
+          'image': 'assets/images/ai_coach.png',
+          'color': AppColors.primary,
+          'route': AppRoutes.aiCoach,
+        };
+      default:
+        return {
+          'image': 'assets/images/Profile.png',
+          'color': AppColors.primary,
+          'route': AppRoutes.dashboard,
+        };
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final DashboardController controller = Get.find<DashboardController>();
     final width = MediaQuery.sizeOf(context).width;
 
     final crossAxisCount = width >= 900
@@ -25,150 +124,8 @@ class QuickActionsSection extends StatelessWidget {
         : width <= 390
         ? 0.78
         : width <= 430
-        ? 0.84
-        : 0.92;
-
-    final actions = <Widget>[
-      // Meditation
-      QuickActionItem(
-        title: "Meditation",
-        icon: Icons.self_improvement_rounded,
-        color: Colors.teal,
-        onTap: () {
-          Get.toNamed(AppRoutes.meditation);
-        },
-      ),
-
-      // Workout
-      QuickActionItem(
-        title: "Workout",
-        icon: Icons.fitness_center_rounded,
-        color: Colors.green,
-        onTap: () {
-          Get.toNamed(AppRoutes.workout);
-        },
-      ),
-
-      // Water
-      QuickActionItem(
-        title: "Water",
-        icon: Icons.water_drop_rounded,
-        color: Colors.blue,
-        onTap: () {
-          Get.toNamed(AppRoutes.waterTracker);
-        },
-      ),
-
-      // Meals
-      QuickActionItem(
-        title: "Meals",
-        icon: Icons.restaurant_menu_rounded,
-        color: Colors.orange,
-        onTap: () {
-          Get.toNamed(AppRoutes.meal);
-        },
-      ),
-
-      // Sleep
-      QuickActionItem(
-        title: "Sleep",
-        icon: Icons.bedtime_rounded,
-        color: Colors.deepPurple,
-        onTap: () {
-          Get.toNamed(AppRoutes.sleep);
-        },
-      ),
-
-      // Progress
-      QuickActionItem(
-        title: "Progress",
-        icon: Icons.show_chart_rounded,
-        color: Colors.amber,
-        onTap: () {
-          Get.toNamed(AppRoutes.progress);
-        },
-      ),
-
-      // Weight
-      QuickActionItem(
-        title: "Weight",
-        icon: Icons.monitor_weight_rounded,
-        color: Colors.redAccent,
-        onTap: () {
-          Get.toNamed(AppRoutes.weight);
-        },
-      ),
-
-      // Vitals
-      QuickActionItem(
-        title: "Vitals",
-        icon: Icons.favorite_rounded,
-        color: Colors.pink,
-        onTap: () {
-          Get.toNamed(AppRoutes.vitalsAnalysis);
-        },
-      ),
-
-      // Mood
-      QuickActionItem(
-        title: "Mood",
-        icon: Icons.mood_rounded,
-        color: Colors.amber,
-        onTap: () {
-          Get.toNamed(AppRoutes.mood);
-        },
-      ),
-
-      // Steps
-      QuickActionItem(
-        title: "Steps",
-        icon: Icons.directions_walk_rounded,
-        color: Colors.indigo,
-        onTap: () {
-          Get.toNamed(AppRoutes.steps);
-        },
-      ),
-
-      // Sexual Wellness
-      QuickActionItem(
-        title: "Sexual Wellness",
-        icon: Icons.favorite_border_rounded,
-        color: Colors.pinkAccent,
-        onTap: () {
-          Get.toNamed(AppRoutes.sexualWellness);
-        },
-      ),
-
-      // Addictions
-      QuickActionItem(
-        title: "Addictions",
-        icon: Icons.block_rounded,
-        color: Colors.deepOrange,
-        onTap: () {
-          Get.toNamed(AppRoutes.addiction);
-        },
-      ),
-
-      // Medicine
-      QuickActionItem(
-        title: "Medicine",
-        icon: Icons.medication_rounded,
-        color: Colors.cyan,
-        onTap: () {
-          Get.toNamed(AppRoutes.explainReport);
-        },
-      ),
-
-      // AI Coach
-      QuickActionItem(
-        title: "AI Coach",
-        icon: Icons.auto_awesome_rounded,
-        color: AppColors.primary,
-        onTap: () {
-          Get.toNamed(AppRoutes.aiCoach);
-        },
-      ),
-    ];
+        ? 0.82
+        : 0.88;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,21 +144,50 @@ class QuickActionsSection extends StatelessWidget {
             ),
           ],
         ),
-
         const SizedBox(height: 16),
+        Obx(() {
+          if (controller.isLoadingQuickActions.value &&
+              controller.quickActions.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(color: AppColors.primary),
+              ),
+            );
+          }
 
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: actions.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: childAspectRatio,
-          ),
-          itemBuilder: (context, index) => actions[index],
-        ),
+          final categories = controller.quickActions;
+
+          if (categories.isEmpty) {
+            return const SizedBox.shrink();
+          }
+
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: categories.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: childAspectRatio,
+            ),
+            itemBuilder: (context, index) {
+              final cat = categories[index];
+              final meta = _getMetadataForSlug(cat.slug);
+
+              return QuickActionItem(
+                title: cat.title,
+                imagePath: meta['image'] as String,
+                color: meta['color'] as Color,
+                onTap: () {
+                  final route = meta['route'] as String;
+                  Get.toNamed(route);
+                },
+              );
+            },
+          );
+        }),
       ],
     );
   }

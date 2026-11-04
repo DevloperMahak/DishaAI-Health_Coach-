@@ -65,7 +65,10 @@ class _LifestyleScreenState extends State<LifestyleScreen>
     ),
   ];
 
-  int? _selectedQuality = 3;
+  int? _selectedQuality = 4;
+
+  // Duration-based estimated quality (not a clinical sleep assessment).
+  static const List<int> _qualityBySleepHour = [0, 1, 2, 4, 3, 1];
 
   //===============================================================
   // ANIMATION
@@ -473,11 +476,7 @@ class _LifestyleScreenState extends State<LifestyleScreen>
             final selected = _selectedQuality == index;
 
             return GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedQuality = index;
-                });
-              },
+              onTap: null,
               child: Column(
                 children: [
                   AnimatedContainer(
@@ -698,6 +697,7 @@ class _LifestyleScreenState extends State<LifestyleScreen>
                 onTap: () {
                   setState(() {
                     _selectedSleepHour = index;
+                    _selectedQuality = _qualityBySleepHour[index];
                   });
                   Get.back();
                 },

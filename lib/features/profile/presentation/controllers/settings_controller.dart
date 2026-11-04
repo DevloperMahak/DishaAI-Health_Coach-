@@ -45,17 +45,24 @@ class SettingsController extends GetxController {
 
   // Update App Settings
   Future<bool> updateSettings({
-    required String preferredLanguage,
-    required bool pushNotifications,
-    required bool microphoneAccess,
-    required String unitSystem,
+    String? preferredLanguage,
+    bool? pushNotifications,
+    bool? microphoneAccess,
+    String? unitSystem,
   }) async {
     debugPrint('▶️ [SettingsController] Updating settings triggered!');
-    debugPrint('   ↳ Attempting to set language to: $preferredLanguage');
+
+    final current = settings.value;
+    final lang = preferredLanguage ?? current?.preferredLanguage ?? 'en';
+    final push = pushNotifications ?? current?.pushNotifications ?? true;
+    final mic = microphoneAccess ?? current?.microphoneAccess ?? false;
+    final unit = unitSystem ?? current?.unitSystem ?? 'metric';
+
+    debugPrint('  ↳ Attempting to set language to: $lang');
 
     // 💡 CRITICAL FIX: Change language instantly BEFORE the API call!
     // This guarantees the UI translates even if your backend API crashes.
-    _applyLocalization(preferredLanguage);
+    _applyLocalization(lang);
 
     try {
       isUpdating.value = true;
@@ -65,10 +72,10 @@ class SettingsController extends GetxController {
         '⏳ [SettingsController] Calling SettingsService.updateSettings...',
       );
       final updated = await _service.updateSettings(
-        preferredLanguage: preferredLanguage,
-        pushNotifications: pushNotifications,
-        microphoneAccess: microphoneAccess,
-        unitSystem: unitSystem,
+        preferredLanguage: lang,
+        pushNotifications: push,
+        microphoneAccess: mic,
+        unitSystem: unit,
       );
 
       debugPrint('✅ [SettingsController] API successfully updated settings!');
@@ -76,7 +83,7 @@ class SettingsController extends GetxController {
       return true;
     } catch (e) {
       debugPrint('🚨 [SettingsController] Catch Block Hit! API Update Failed!');
-      debugPrint('   ↳ Error Details: $e');
+      debugPrint('  ↳ Error Details: $e');
       errorMessage.value = e.toString().replaceAll('Exception: ', '');
       return false;
     } finally {

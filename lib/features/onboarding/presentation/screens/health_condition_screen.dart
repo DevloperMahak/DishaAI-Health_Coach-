@@ -6,7 +6,7 @@ import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../controllers/health_profile_controller.dart';
 import '../widgets/onboarding_top_bar.dart';
-import '../../data/models/master_data_model.dart'; // 💡 ConditionItem model
+import '../../data/models/master_data_model.dart';
 
 class HealthConditionScreen extends StatefulWidget {
   const HealthConditionScreen({super.key});
@@ -22,26 +22,20 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
   //===============================================================
 
   static const int _totalSteps = 9;
-  static const int _currentStep = 2;
+  static const int _currentStep = 3;
 
   //===============================================================
   // CONTROLLERS
   //===============================================================
 
-  final TextEditingController _otherController = TextEditingController();
-
   late final HealthProfileController _healthProfileController;
-  late final MasterDataController
-  _masterDataController; // 💡 Master data controller
+  late final MasterDataController _masterDataController;
 
   //===============================================================
   // STATE
   //===============================================================
 
   final Set<String> _selectedSlugs = {};
-  bool _includeOther = false;
-
-  bool get _showOtherField => _includeOther;
 
   //===============================================================
   // ANIMATION
@@ -59,6 +53,7 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
   void initState() {
     super.initState();
 
+    // Get or register HealthProfileController
     if (Get.isRegistered<HealthProfileController>()) {
       _healthProfileController = Get.find<HealthProfileController>();
     } else {
@@ -94,6 +89,7 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
         );
 
     _animationController.forward();
+
     _loadExistingConditions();
   }
 
@@ -101,9 +97,12 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
     await _masterDataController.fetchMasterData();
 
     final profile = _healthProfileController.healthProfile.value;
+
+    if (!mounted) return;
+
     if (profile != null && profile.conditions.isNotEmpty) {
       setState(() {
-        for (var cond in profile.conditions) {
+        for (final cond in profile.conditions) {
           _selectedSlugs.add(cond);
         }
       });
@@ -112,7 +111,6 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
 
   @override
   void dispose() {
-    _otherController.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -122,20 +120,13 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
   //===============================================================
 
   void _toggleSelection(String slug) {
+    if (slug.trim().isEmpty) return;
+
     setState(() {
       if (_selectedSlugs.contains(slug)) {
         _selectedSlugs.remove(slug);
       } else {
         _selectedSlugs.add(slug);
-      }
-    });
-  }
-
-  void _toggleOther() {
-    setState(() {
-      _includeOther = !_includeOther;
-      if (!_includeOther) {
-        _otherController.clear();
       }
     });
   }
@@ -149,7 +140,8 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
   }
 
   Future<void> _next() async {
-    if (_selectedSlugs.isEmpty && !_includeOther) {
+    // Only API-provided health conditions are allowed.
+    if (_selectedSlugs.isEmpty) {
       _showValidationMessage();
       return;
     }
@@ -158,15 +150,13 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
 
     final conditions = List<String>.from(_selectedSlugs);
 
-    if (_includeOther && _otherController.text.trim().isNotEmpty) {
-      conditions.add(_otherController.text.trim());
-    }
-
     debugPrint("Selected Conditions to API: $conditions");
 
     final success = await _healthProfileController.saveHealthConditions(
       conditions: conditions,
     );
+
+    if (!mounted) return;
 
     if (success) {
       Get.toNamed(AppRoutes.activityLevel);
@@ -185,7 +175,7 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
   void _showValidationMessage() {
     Get.snackbar(
       "Select Health Condition",
-      "Please select at least one health condition or Skip.",
+      "Please select at least one health condition.",
       snackPosition: SnackPosition.BOTTOM,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       backgroundColor: AppColors.surface,
@@ -201,28 +191,38 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
     Get.toNamed(AppRoutes.activityLevel);
   }
 
-  // Helper mapping icon names
+  //===============================================================
+  // ICON MAPPING
+  //===============================================================
+
   IconData _getIconData(String? iconName) {
     switch (iconName?.toLowerCase()) {
       case 'bloodtype':
         return Icons.bloodtype_outlined;
+
       case 'heart':
       case 'favorite':
         return Icons.favorite_outline;
+
       case 'thyroid':
       case 'psychology':
         return Icons.psychology_alt_outlined;
+
       case 'heart_disease':
       case 'monitor_heart':
         return Icons.monitor_heart_outlined;
+
       case 'female':
         return Icons.female_outlined;
+
       case 'asthma':
       case 'air':
         return Icons.air_outlined;
+
       case 'cholesterol':
       case 'opacity':
         return Icons.opacity_outlined;
+
       default:
         return Icons.medical_services_outlined;
     }
@@ -317,25 +317,22 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
                   onBack: _goBack,
                   onSkip: _skipOnboarding,
                 ),
+
                 SizedBox(height: compact ? 24 : 30),
+
                 _buildTitleSection(width: width, compact: compact),
+
                 SizedBox(height: compact ? 22 : 28),
+
                 _buildGrid(
                   width: width - (horizontalPadding * 2),
                   compact: compact,
                 ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  child: _showOtherField
-                      ? Padding(
-                          padding: const EdgeInsets.only(top: 18),
-                          child: _buildOtherTextField(),
-                        )
-                      : const SizedBox(),
-                ),
+
                 SizedBox(height: compact ? 24 : 30),
+
                 _buildNextButton(width: width - (horizontalPadding * 2)),
+
                 SizedBox(height: compact ? 12 : 18),
               ],
             ),
@@ -372,20 +369,17 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
                     onBack: _goBack,
                     onSkip: _skipOnboarding,
                   ),
+
                   const SizedBox(height: 34),
+
                   _buildTitleSection(width: contentWidth, compact: false),
+
                   const SizedBox(height: 30),
+
                   _buildGrid(width: contentWidth, compact: false),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 220),
-                    child: _showOtherField
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 22),
-                            child: _buildOtherTextField(),
-                          )
-                        : const SizedBox(),
-                  ),
+
                   const SizedBox(height: 34),
+
                   _buildNextButton(width: contentWidth),
                 ],
               ),
@@ -415,7 +409,9 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
             height: 1.22,
           ),
         ),
+
         SizedBox(height: compact ? 8 : 10),
+
         Text(
           "You can select multiple options.",
           style: TextStyle(
@@ -436,13 +432,10 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
     final conditionsFromApi =
         _masterDataController.masterData.value?.conditions ?? [];
 
-    // Combine API conditions + hardcoded "Other" card at the end
-    final totalCount = conditionsFromApi.length + 1;
-
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: totalCount,
+      itemCount: conditionsFromApi.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 12,
@@ -450,19 +443,8 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
         childAspectRatio: 2.0,
       ),
       itemBuilder: (_, index) {
-        if (index == conditionsFromApi.length) {
-          // Render "Other" Card manually
-          return _buildConditionCard(
-            title: "Other",
-            icon: Icons.more_horiz,
-            selected: _includeOther,
-            onTap: _toggleOther,
-            width: width,
-            compact: compact,
-          );
-        }
-
         final item = conditionsFromApi[index];
+
         final slug = item.slug ?? item.name ?? '';
         final selected = _selectedSlugs.contains(slug);
 
@@ -491,9 +473,11 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
     required bool compact,
   }) {
     final scale = _getScale(width);
+
     final cardHeight = compact
         ? (66 * scale).clamp(62.0, 70.0)
         : (72 * scale).clamp(68.0, 78.0);
+
     final iconBox = (42 * scale).clamp(38.0, 46.0);
     final titleSize = (12.5 * scale).clamp(11.5, 14.0);
     final checkSize = (20 * scale).clamp(18.0, 22.0);
@@ -540,7 +524,9 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
               ),
               child: Icon(icon, size: 21, color: Colors.black),
             ),
+
             SizedBox(width: 10 * scale),
+
             Expanded(
               child: Text(
                 title,
@@ -553,6 +539,7 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
                 ),
               ),
             ),
+
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               width: checkSize,
@@ -573,53 +560,6 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
   }
 
   //===============================================================
-  // OTHER TEXT FIELD
-  //===============================================================
-
-  Widget _buildOtherTextField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Please specify (Optional)",
-          style: TextStyle(
-            color: AppColors.primary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _otherController,
-          maxLines: 4,
-          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: "Write here...",
-            hintStyle: TextStyle(
-              color: AppColors.textSecondary.withOpacity(.7),
-            ),
-            filled: true,
-            fillColor: AppColors.background,
-            contentPadding: const EdgeInsets.all(16),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppColors.primary.withOpacity(.7)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppColors.primary.withOpacity(.7)),
-            ),
-            focusedBorder: const OutlineInputBorder(
-              borderRadius: BorderRadius.all(Radius.circular(10)),
-              borderSide: BorderSide(color: AppColors.primary, width: 1.2),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  //===============================================================
   // NEXT BUTTON
   //===============================================================
 
@@ -631,7 +571,9 @@ class _HealthConditionScreenState extends State<HealthConditionScreen>
     final iconSize = (18 * scale).clamp(17.0, 20.0);
     final radius = (9 * scale).clamp(8.0, 11.0);
 
-    final enabled = _selectedSlugs.isNotEmpty || _includeOther;
+    // Next is enabled only when an API-provided condition
+    // has been selected.
+    final enabled = _selectedSlugs.isNotEmpty;
 
     return Obx(() {
       final isSaving = _healthProfileController.isSaving.value;

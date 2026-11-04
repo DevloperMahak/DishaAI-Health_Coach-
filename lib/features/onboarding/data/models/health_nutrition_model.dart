@@ -123,3 +123,48 @@ class NutritionSummaryModel {
     };
   }
 }
+
+class SleepLogModel {
+  final String? logDate;
+  final double? sleepHours;
+  final String? sleepQuality;
+  final String? emoji;
+
+  SleepLogModel({this.logDate, this.sleepHours, this.sleepQuality, this.emoji});
+
+  factory SleepLogModel.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> data = json['data'] is Map
+        ? Map<String, dynamic>.from(json['data'])
+        : json;
+
+    return SleepLogModel(
+      logDate: data['log_date']?.toString(),
+      sleepHours: _toDouble(data['sleep_hours']),
+      sleepQuality: data['sleep_quality']?.toString(),
+      emoji: data['emoji']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (logDate != null) 'date': logDate,
+      if (sleepHours != null) 'sleep_hours': sleepHours,
+    };
+  }
+
+  static double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  @override
+  String toString() {
+    return 'SleepLogModel('
+        'logDate: $logDate, '
+        'sleepHours: $sleepHours, '
+        'sleepQuality: $sleepQuality, '
+        'emoji: $emoji'
+        ')';
+  }
+}

@@ -23,9 +23,9 @@ class HealthProfileModel {
   final List<String> allergies;
   final List<String> avoidedFoods;
 
-  // Added new fields
   final String? sexualWellness;
   final String? habitAddiction;
+  final int? healthScore; // 💡 Added healthScore field
 
   HealthProfileModel({
     this.id,
@@ -49,6 +49,7 @@ class HealthProfileModel {
     this.avoidedFoods = const [],
     this.sexualWellness,
     this.habitAddiction,
+    this.healthScore, // 💡 Added to constructor
   });
 
   factory HealthProfileModel.fromJson(Map<String, dynamic> json) {
@@ -150,10 +151,17 @@ class HealthProfileModel {
           json['sleep_quality']?.toString(),
 
       dietType:
-          json['diet_type']?.toString() ??
-          json['dietType']?.toString() ??
+          // 💡 1. Check inside 'food_preference' at root or user level
+          json['food_preference']?['diet_type']?.toString() ??
+          json['food_preference']?['dietType']?.toString() ??
+          userData['food_preference']?['diet_type']?.toString() ??
+          userData['food_preference']?['dietType']?.toString() ??
+          // 💡 2. Check inside 'health_profile'
+          healthProfileData['diet_type']?.toString() ??
+          healthProfileData['dietType']?.toString() ??
           userData['diet_type']?.toString() ??
-          healthProfileData['diet_type']?.toString(),
+          json['diet_type']?.toString() ??
+          json['dietType']?.toString(),
 
       allergies: _toStringList(
         json['allergies'] ??
@@ -168,7 +176,6 @@ class HealthProfileModel {
             healthProfileData['avoided_foods'],
       ),
 
-      // Parse new fields
       sexualWellness:
           healthProfileData['sexual_wellness']?.toString() ??
           healthProfileData['sexualWellness']?.toString() ??
@@ -178,6 +185,14 @@ class HealthProfileModel {
           healthProfileData['habit_addiction']?.toString() ??
           healthProfileData['habitAddiction']?.toString() ??
           json['habit_addiction']?.toString(),
+
+      // 💡 Parse health_score from JSON (supporting multiple key variations)
+      healthScore: _toInt(
+        healthProfileData['health_score'] ??
+            healthProfileData['healthScore'] ??
+            userData['health_score'] ??
+            json['health_score'],
+      ),
     );
   }
 
@@ -188,30 +203,22 @@ class HealthProfileModel {
       if (mobile != null) 'mobile': mobile,
       if (age != null) 'age': age,
       if (gender != null) 'gender': gender,
-
       if (heightCm != null) 'height_cm': heightCm,
       if (weightKg != null) 'weight_kg': weightKg,
       if (targetWeightKg != null) 'target_weight_kg': targetWeightKg,
-
       if (activityLevel != null) 'activity_level': activityLevel,
-
       if (sleepHoursTarget != null) 'sleep_hours_target': sleepHoursTarget,
-
       if (stressLevel != null) 'stress_level': stressLevel,
-
       'goals': goals,
       'conditions': conditions,
       'challenges': challenges,
       if (sleepQuality != null) 'sleep_quality': sleepQuality,
-
       if (dietType != null) 'diet_type': dietType,
-
       'allergies': allergies,
       'avoided_foods': avoidedFoods,
-
-      // Serialize new fields
       if (sexualWellness != null) 'sexual_wellness': sexualWellness,
       if (habitAddiction != null) 'habit_addiction': habitAddiction,
+      if (healthScore != null) 'health_score': healthScore,
     };
   }
 

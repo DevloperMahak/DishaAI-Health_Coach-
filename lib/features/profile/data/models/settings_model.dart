@@ -16,15 +16,11 @@ class SettingsModel {
   factory SettingsModel.fromJson(Map<String, dynamic> json) {
     debugPrint('⚙️ [SettingsModel] Parsing JSON: $json');
 
-    // 💡 FIX: Safely extract the 'data' object if it exists
     final Map<String, dynamic> data =
         json.containsKey('data') && json['data'] != null ? json['data'] : json;
 
     return SettingsModel(
-      // Now we pull from 'data' instead of 'json'
       preferredLanguage: data['preferred_language'] ?? 'en',
-
-      // Also ensuring we use the exact keys your backend returns
       pushNotifications:
           data['hydration_reminder_enabled'] ??
           data['push_notifications'] ??
@@ -39,7 +35,9 @@ class SettingsModel {
     return {
       'preferred_language': preferredLanguage,
       'push_notifications': pushNotifications,
+      'hydration_reminder_enabled': pushNotifications,
       'microphone_access': microphoneAccess,
+      'microphone_enabled': microphoneAccess,
       'unit_system': unitSystem,
     };
   }

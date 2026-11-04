@@ -2,55 +2,60 @@ import 'package:flutter/material.dart';
 import 'quick_metric_card.dart';
 
 class QuickHealthMetrics extends StatelessWidget {
-  const QuickHealthMetrics({super.key});
+  final String calories;
+  final String steps;
+  final String sleep;
+  final String water;
+
+  const QuickHealthMetrics({
+    super.key,
+    required this.calories,
+    required this.steps,
+    required this.sleep,
+    required this.water,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
         Expanded(
           child: QuickMetricCard(
             icon: Icons.local_fire_department_rounded,
             iconColor: Colors.orange,
-            value: "1,650",
-            unit: "/2000",
-            title: "kcal",
+            value: calories,
+            unit: "kcal", // Dynamic unit
+            title: "Calories",
           ),
         ),
-
-        SizedBox(width: 8),
-
+        const SizedBox(width: 8),
         Expanded(
           child: QuickMetricCard(
             icon: Icons.directions_run_rounded,
             iconColor: Colors.green,
-            value: "1,650",
+            value: steps,
             unit: "",
-            title: "steps",
+            title: "Steps",
           ),
         ),
-
-        SizedBox(width: 8),
-
+        const SizedBox(width: 8),
         Expanded(
           child: QuickMetricCard(
             icon: Icons.nightlight_round,
             iconColor: Colors.deepPurpleAccent,
-            value: "7.1",
-            unit: "",
-            title: "hours",
+            value: sleep,
+            unit: "hrs",
+            title: "Sleep",
           ),
         ),
-
-        SizedBox(width: 8),
-
+        const SizedBox(width: 8),
         Expanded(
           child: QuickMetricCard(
             icon: Icons.water_drop_rounded,
             iconColor: Colors.lightBlue,
-            value: "20/32",
-            unit: "",
-            title: "Glasses",
+            value: water,
+            unit: "L", // Matching Today Overview unit
+            title: "Water",
           ),
         ),
       ],

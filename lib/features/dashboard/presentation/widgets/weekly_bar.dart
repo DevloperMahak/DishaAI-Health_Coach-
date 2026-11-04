@@ -18,46 +18,61 @@ class WeeklyBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: value),
-            duration: const Duration(milliseconds: 900),
-            curve: Curves.easeOutCubic,
-            builder: (_, height, __) {
-              return Container(
-                height: 90 * height,
-                width: 18,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [color, color.withOpacity(.45)],
-                  ),
-                  boxShadow: [
-                    if (selected)
-                      BoxShadow(color: color.withOpacity(.35), blurRadius: 12),
-                  ],
-                ),
-              );
-            },
-          ),
+    // ============================================================
+    // SAFE PROGRESS VALUE
+    // ============================================================
 
-          const SizedBox(height: 10),
+    double safeValue = value;
 
-          Text(
-            day,
-            style: TextStyle(
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? AppColors.primary : AppColors.textSecondary,
-              fontSize: 11,
+    if (!safeValue.isFinite) {
+      safeValue = 0.0;
+    }
+
+    safeValue = safeValue.clamp(0.0, 1.0);
+
+    final double barHeight = 90.0 * safeValue;
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      mainAxisSize: MainAxisSize.max,
+      children: [
+        // ============================================================
+        // PROGRESS BAR
+        // ============================================================
+        Container(
+          height: barHeight,
+          width: 18.0,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [color, color.withOpacity(.45)],
             ),
+            boxShadow: [
+              if (selected)
+                BoxShadow(color: color.withOpacity(.35), blurRadius: 12),
+            ],
           ),
-        ],
-      ),
+        ),
+
+        // ============================================================
+        // DAY LABEL
+        // ============================================================
+        const SizedBox(height: 10),
+
+        Text(
+          day,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? AppColors.primary : AppColors.textSecondary,
+            fontSize: 11,
+          ),
+        ),
+      ],
     );
   }
 }

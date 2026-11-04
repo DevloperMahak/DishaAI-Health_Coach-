@@ -1,4 +1,5 @@
 import 'package:disha_ai/features/authentication/presentation/controllers/auth_controller.dart';
+import 'package:disha_ai/features/reminders/data/services/local_alarm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -125,7 +126,28 @@ class _SplashScreenState extends State<SplashScreen>
     await _exitController.forward();
     if (!mounted) return;
 
+    // ============================================================
+    // OPEN INITIAL APP ROUTE
+    // ============================================================
+
     Get.offNamed(destination);
+
+    // ============================================================
+    // MARK LOCAL ALARM SERVICE AS READY
+    // ============================================================
+    //
+    // LocalAlarmService checks whether Android launched the app
+    // because of an alarm notification.
+    //
+    // We intentionally call this AFTER routing so the splash
+    // screen cannot override AlarmScreen.
+    //
+    // The service will do nothing when there is no pending alarm.
+    // ============================================================
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    await LocalAlarmService.instance.markAppReady();
   }
 
   Future<String> _determineInitialRoute() async {
@@ -138,62 +160,129 @@ class _SplashScreenState extends State<SplashScreen>
 
     print('TOKEN EXISTS: ${token != null && token.isNotEmpty}');
     print('TOKEN LENGTH: ${token?.length ?? 0}');
-    print('ACCESS TOKEN: $token'); // <--- Added full access token print
+
+    // ============================================================
+    // NO TOKEN → LOGIN
+    // ============================================================
 
     if (token == null || token.isEmpty) {
       print('❌ NO ACCESS TOKEN');
       print('➡️ ROUTE: LOGIN');
       print('==========================================');
+
       return AppRoutes.login;
     }
 
     print('✅ ACCESS TOKEN FOUND');
+    print('🔄 VALIDATING SESSION WITH SERVER...');
 
-    Map<String, dynamic>? user = _authStorage.currentUser;
-    print('STORED USER EXISTS: ${user != null}');
+    // ============================================================
+    // VALIDATE TOKEN + GET LATEST USER FROM BACKEND
+    // ============================================================
 
-    if (user == null) {
-      print('⚠️ STORED USER NOT FOUND');
-      print('🔄 FETCHING USER FROM SERVER...');
+    try {
+      final authController = Get.isRegistered<AuthController>()
+          ? Get.find<AuthController>()
+          : Get.put(AuthController());
 
-      try {
-        final authController = Get.isRegistered<AuthController>()
-            ? Get.find<AuthController>()
-            : Get.put(AuthController());
+      final result = await authController.getCurrentUser();
 
-        final result = await authController.getCurrentUser();
+      // ------------------------------------------------------------
+      // SERVER AUTHENTICATION FAILED
+      // ------------------------------------------------------------
 
-        if (result['success'] == true) {
-          user = _authStorage.currentUser;
-          print('✅ USER FETCHED SUCCESSFULLY');
-        } else {
-          print('❌ FAILED TO FETCH USER: ${result['message']}');
-        }
-      } catch (e) {
-        print('❌ USER FETCH ERROR: $e');
+      if (result['success'] != true) {
+        print('❌ SESSION VALIDATION FAILED');
+        print('MESSAGE: ${result['message']}');
+
+        await _authStorage.clear();
+
+        print('🧹 STORED SESSION CLEARED');
+        print('➡️ ROUTE: LOGIN');
+        print('==========================================');
+
+        return AppRoutes.login;
       }
-    }
 
-    if (user == null) {
-      print('⚠️ USER DATA NOT AVAILABLE');
+      // ------------------------------------------------------------
+      // GET LATEST USER
+      // ------------------------------------------------------------
+
+      final user = result['user'];
+
+      if (user is! Map) {
+        print('❌ USER DATA NOT AVAILABLE');
+
+        await _authStorage.clear();
+
+        print('🧹 STORED SESSION CLEARED');
+        print('➡️ ROUTE: LOGIN');
+        print('==========================================');
+
+        return AppRoutes.login;
+      }
+
+      final userMap = Map<String, dynamic>.from(user);
+
+      // Only the server may confirm onboarding completion.
+      // A saved questionnaire must never be sufficient for dashboard access.
+      final data = result['data'];
+      final responseData = data is Map ? data['data'] : null;
+      final responseMap = responseData is Map ? responseData : null;
+
+      final bool onboardingCompleted = _parseBool(
+        userMap['onboarding_completed'] ?? responseMap?['onboarding_completed'],
+      );
+
+      // Prefer a dedicated backend payment-verification field when available.
+      // The current API documents is_premium after verified trial payment.
+      // is_premium is a compatibility safeguard, NOT proof of payment by itself.
+      final dynamic verifiedPayment =
+          userMap['onboarding_payment_verified'] ??
+          responseMap?['onboarding_payment_verified'];
+      final bool paymentEligible = verifiedPayment != null
+          ? _parseBool(verifiedPayment)
+          : _parseBool(userMap['is_premium'] ?? responseMap?['is_premium']);
+
+      final bool canOpenDashboard = onboardingCompleted && paymentEligible;
+
+      print('========== ONBOARDING ACCESS CHECK ==========');
+      print('ONBOARDING COMPLETED: $onboardingCompleted');
+      print('PAYMENT ELIGIBLE: $paymentEligible');
+      print('DASHBOARD ALLOWED: $canOpenDashboard');
+      print('=============================================');
+
+      if (!canOpenDashboard) {
+        print('➡️ ROUTE: ONBOARDING (payment/onboarding incomplete)');
+        return AppRoutes.onboarding;
+      }
+
+      // Only sync dashboard reminders for a fully activated account.
+      try {
+        await LocalAlarmService.instance.syncActiveAlarms();
+      } catch (e) {
+        print('⚠️ ACTIVE REMINDER SYNC FAILED: $e');
+      }
+
+      print('➡️ ROUTE: DASHBOARD');
+      return AppRoutes.dashboard;
+    } catch (e) {
+      print('❌ SESSION VALIDATION ERROR: $e');
+
+      await _authStorage.clear();
+
+      print('🧹 STORED SESSION CLEARED');
       print('➡️ ROUTE: LOGIN');
       print('==========================================');
+
       return AppRoutes.login;
     }
-
-    final onboardingCompleted = _parseBool(user['onboarding_completed']);
-    print('ONBOARDING COMPLETED: $onboardingCompleted');
-
-    print('🟢 ONBOARDING COMPLETED');
-    print('➡️ ROUTE: DASHBOARD');
-    print('==========================================');
-
-    return AppRoutes.dashboard;
   }
 
   bool _parseBool(dynamic value) {
     if (value is bool) return value;
-    if (value is String) return value.toLowerCase() == 'true';
+    if (value is String)
+      return value.trim().toLowerCase() == 'true' || value.trim() == '1';
     if (value is int) return value == 1;
     return false;
   }

@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
 import '../../../../core/network/api_constants.dart';
 import '../../../../core/storage/auth_storage.dart';
 import '../models/payment_report_models.dart';
@@ -31,21 +33,31 @@ class PaymentReportService {
   // POST /payment/create-order
   // ============================================================
 
-  Future<PaymentOrderModel> createOrder(num amount) async {
+  Future<PaymentOrderModel> createOrder(
+    num amount, {
+    String paymentType = 'onboarding_trial',
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/payment/create-order');
+
+    final body = {'amount': amount, 'payment_type': paymentType};
+
+    debugPrint('========== CREATE PAYMENT ORDER ==========');
+    debugPrint('URL: $uri');
+    debugPrint('BODY: ${jsonEncode(body)}');
+
     final response = await http.post(
-      Uri.parse('${ApiConstants.baseUrl}/payment/create-order'),
+      uri,
       headers: _headers(),
-      body: jsonEncode({'amount': amount}),
+      body: jsonEncode(body),
     );
 
-    debugPrint('PAYMENT ORDER STATUS: ${response.statusCode}');
-    debugPrint('PAYMENT ORDER BODY: ${response.body}');
+    debugPrint('STATUS: ${response.statusCode}');
 
     return _handleOrderResponse(response);
   }
 
   // ============================================================
-  // 2. VERIFY PAYMENT SIGNATURE
+  // 2. VERIFY RAZORPAY PAYMENT
   // POST /payment/verify
   // ============================================================
 
@@ -53,26 +65,86 @@ class PaymentReportService {
     required String orderId,
     required String paymentId,
     required String signature,
+    String paymentType = 'onboarding_trial',
   }) async {
+    if (orderId.trim().isEmpty ||
+        paymentId.trim().isEmpty ||
+        signature.trim().isEmpty) {
+      throw Exception('Incomplete Razorpay payment details');
+    }
+
+    final uri = Uri.parse('${ApiConstants.baseUrl}/payment/verify');
+
+    final body = {
+      'razorpay_order_id': orderId,
+      'razorpay_payment_id': paymentId,
+      'razorpay_signature': signature,
+      'payment_type': paymentType,
+    };
+
+    debugPrint('========== VERIFY PAYMENT ==========');
+    debugPrint('URL: $uri');
+    debugPrint('ORDER ID: $orderId');
+    debugPrint('PAYMENT ID: $paymentId');
+
     final response = await http.post(
-      Uri.parse('${ApiConstants.baseUrl}/payment/verify'),
+      uri,
       headers: _headers(),
-      body: jsonEncode({
-        'razorpay_order_id': orderId,
-        'razorpay_payment_id': paymentId,
-        'razorpay_signature': signature,
-      }),
+      body: jsonEncode(body),
     );
 
+    debugPrint('STATUS: ${response.statusCode}');
+
     final decoded = _decode(response);
-    if (response.statusCode >= 200 && response.statusCode < 300) {
+
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded is Map<String, dynamic> &&
+        decoded['success'] == true) {
+      debugPrint('✅ Payment verified successfully');
       return true;
     }
+
     throw Exception(_extractMessage(decoded));
   }
 
   // ============================================================
-  // 3. FETCH WEEKLY REPORT
+  // 3. GET CURRENT USER / ONBOARDING STATUS
+  // GET /auth/me
+  // ============================================================
+
+  Future<bool> isOnboardingCompleted() async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/auth/me');
+
+    debugPrint('========== CHECK ONBOARDING STATUS ==========');
+
+    final response = await http.get(uri, headers: _headers());
+
+    debugPrint('STATUS: ${response.statusCode}');
+
+    final decoded = _decode(response);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_extractMessage(decoded));
+    }
+
+    if (decoded is! Map<String, dynamic> || decoded['success'] != true) {
+      throw Exception(_extractMessage(decoded));
+    }
+
+    final data = _extractData(decoded);
+
+    final user = data['user'];
+
+    final onboardingCompleted =
+        data['onboarding_completed'] ??
+        (user is Map ? user['onboarding_completed'] : null);
+
+    return _parseBool(onboardingCompleted);
+  }
+
+  // ============================================================
+  // 4. FETCH WEEKLY REPORT
   // GET /reports/weekly
   // ============================================================
 
@@ -86,7 +158,7 @@ class PaymentReportService {
   }
 
   // ============================================================
-  // 4. FETCH MONTHLY REPORT
+  // 5. FETCH MONTHLY REPORT
   // GET /reports/monthly
   // ============================================================
 
@@ -100,33 +172,38 @@ class PaymentReportService {
   }
 
   // ============================================================
-  // RESPONSE HANDLERS
+  // ORDER RESPONSE HANDLER
   // ============================================================
 
   PaymentOrderModel _handleOrderResponse(http.Response response) {
     final decoded = _decode(response);
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      final data = _extractData(decoded);
-      return PaymentOrderModel.fromJson(data);
-    }
-
-    throw Exception(_extractMessage(decoded));
-  }
-
-  HealthReportModel _handleReportResponse(http.Response response) {
-    final decoded = _decode(response);
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      final data = _extractData(decoded);
-      return HealthReportModel.fromJson(data);
+    if (response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded is Map<String, dynamic> &&
+        decoded['success'] == true) {
+      return PaymentOrderModel.fromJson(_extractData(decoded));
     }
 
     throw Exception(_extractMessage(decoded));
   }
 
   // ============================================================
-  // JSON DECODE
+  // REPORT RESPONSE HANDLER
+  // ============================================================
+
+  HealthReportModel _handleReportResponse(http.Response response) {
+    final decoded = _decode(response);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return HealthReportModel.fromJson(_extractData(decoded));
+    }
+
+    throw Exception(_extractMessage(decoded));
+  }
+
+  // ============================================================
+  // DECODE RESPONSE
   // ============================================================
 
   dynamic _decode(http.Response response) {
@@ -156,8 +233,24 @@ class PaymentReportService {
   }
 
   // ============================================================
+  // PARSE BOOLEAN
+  // ============================================================
+
+  bool _parseBool(dynamic value) {
+    if (value is bool) return value;
+
+    if (value is int) return value == 1;
+
+    if (value is String) {
+      return value.toLowerCase() == 'true' || value == '1';
+    }
+
+    return false;
+  }
+
+  // ============================================================
   // ERROR MESSAGE
-  // =================================================5===========
+  // ============================================================
 
   String _extractMessage(dynamic decoded) {
     if (decoded is Map<String, dynamic>) {

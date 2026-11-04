@@ -1,12 +1,16 @@
 import 'package:disha_ai/features/ai_health_coach/presentation/controllers/ai_controller.dart';
 import 'package:disha_ai/features/authentication/presentation/controllers/auth_controller.dart';
 import 'package:disha_ai/features/dashboard/presentation/controllers/task_controller.dart';
+import 'package:disha_ai/features/dashboard/presentation/controllers/weekly_progress_controller.dart';
 import 'package:disha_ai/features/onboarding/presentation/controllers/health_profile_controller.dart';
+import 'package:disha_ai/features/notifications/presentation/controllers/notification_controller.dart';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:disha_ai/app/routes/app_routes.dart';
 import 'package:disha_ai/core/widgets/drawer.dart';
+
 import '../../../../app/theme/app_colors.dart';
 
 import '../controllers/dashboard_controller.dart';
@@ -30,52 +34,141 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  // ============================================================
+  // SCAFFOLD KEY
+  // ============================================================
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final HealthProfileController _healthProfileController = Get.put(
-    HealthProfileController(),
-  );
-  final AiController _aiController = Get.put(AiController());
-  final DashboardController _dashboardController = Get.put(
-    DashboardController(),
-  );
-  final AuthController _authController = Get.put(AuthController());
-  final TaskController _taskController = Get.put(TaskController());
+  // ============================================================
+  // CONTROLLERS
+  // ============================================================
 
-  int _currentIndex = 0;
-  final int _healthScore = 91;
+  final HealthProfileController _healthProfileController =
+      Get.isRegistered<HealthProfileController>()
+      ? Get.find<HealthProfileController>()
+      : Get.put(HealthProfileController());
+
+  final AiController _aiController = Get.find<AiController>();
+
+  final DashboardController _dashboardController =
+      Get.find<DashboardController>();
+
+  final WeeklyProgressController _weeklyProgressController =
+      Get.isRegistered<WeeklyProgressController>()
+      ? Get.find<WeeklyProgressController>()
+      : Get.put(WeeklyProgressController());
+
+  final AuthController _authController = Get.isRegistered<AuthController>()
+      ? Get.find<AuthController>()
+      : Get.put(AuthController());
+
+  final TaskController _taskController = Get.isRegistered<TaskController>()
+      ? Get.find<TaskController>()
+      : Get.put(TaskController());
+
+  final NotificationController _notificationController =
+      Get.isRegistered<NotificationController>()
+      ? Get.find<NotificationController>()
+      : Get.put(NotificationController());
+
+  // ============================================================
+  // BOTTOM NAVIGATION
+  //
+  // Dashboard is the HOME screen.
+  //
+  // Other tabs open separate routes, so the dashboard itself
+  // must always display HOME as the selected tab.
+  // ============================================================
+
+  static const int _homeIndex = 0;
+
+  // Prevent multiple navigation requests from rapid taps.
+  bool _isNavigating = false;
+
+  // ============================================================
+  // LIFECYCLE
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
       _loadDashboardData();
     });
   }
 
+  // ============================================================
+  // LOAD DASHBOARD DATA
+  // ============================================================
+
   Future<void> _loadDashboardData() async {
-    await Future.wait([
-      _healthProfileController.getHealthProfile(),
-      _aiController.getRecommendations(),
-      _dashboardController.loadDashboard(),
-      _authController.getCurrentUser(),
-      _taskController.fetchTasks(),
-    ]);
+    try {
+      await Future.wait([
+        _healthProfileController.getHealthProfile(),
+        _aiController.getRecommendations(),
+        _dashboardController.loadDashboard(),
+        _authController.getCurrentUser(),
+        _taskController.fetchTasks(),
+        _weeklyProgressController.refreshWeeklyProgress(),
+        _notificationController.fetchNotifications(),
+      ]);
+
+      if (!mounted) return;
+
+      debugPrint(
+        '🔍 [Dashboard Debug] Current User Data: '
+        '${_authController.currentUser.value}',
+      );
+
+      debugPrint(
+        '🔍 [Dashboard Debug] Health Profile Data: '
+        '${_healthProfileController.healthProfile.value?.toJson()}',
+      );
+
+      debugPrint(
+        '🔍 [Dashboard Debug] Weekly Progress: '
+        '${_weeklyProgressController.days.length} days loaded',
+      );
+
+      debugPrint(
+        '🔔 [Dashboard Debug] Unread Notifications: '
+        '${_notificationController.unreadCount}',
+      );
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Dashboard] Failed to load dashboard data: $e');
+
+      debugPrint('$stackTrace');
+    }
   }
+
+  // ============================================================
+  // REFRESH DASHBOARD
+  // ============================================================
 
   Future<void> _refreshDashboard() async {
     await _loadDashboardData();
   }
 
+  // ============================================================
+  // USER NAME
+  // ============================================================
+
   String get _userName {
     final profile = _healthProfileController.healthProfile.value;
+
     if (profile?.name != null && profile!.name!.trim().isNotEmpty) {
       return profile.name!.split(' ').first.capitalizeFirst ?? profile.name!;
     }
 
     final user = _authController.currentUser.value;
+
     if (user != null) {
       final name = user['name'] ?? user['full_name'] ?? user['username'];
+
       if (name != null && name.toString().trim().isNotEmpty) {
         return name.toString().split(' ').first.capitalizeFirst ??
             name.toString();
@@ -85,33 +178,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return "User".tr;
   }
 
+  // ============================================================
+  // HEALTH SCORE
+  // ============================================================
+
+  int get _healthScore {
+    final profile = _healthProfileController.healthProfile.value;
+
+    if (profile != null && profile.healthScore != null) {
+      return profile.healthScore!;
+    }
+
+    final user = _authController.currentUser.value;
+
+    if (user != null && user['health_score'] != null) {
+      return int.tryParse(user['health_score'].toString()) ?? 85;
+    }
+
+    return 85;
+  }
+
+  // ============================================================
+  // USER GOAL
+  // ============================================================
+
   String get _userGoal {
     final localGoal = _healthProfileController.primaryHealthGoal;
-    if (localGoal != null && localGoal.isNotEmpty) return localGoal.tr;
 
-    final goals = _healthProfileController.healthProfile.value?.goals;
-    if (goals != null && goals.isNotEmpty) {
-      final firstGoal = goals.first;
+    if (localGoal != null && localGoal.isNotEmpty) {
+      return localGoal.tr;
+    }
+
+    final profileGoals = _healthProfileController.healthProfile.value?.goals;
+
+    if (profileGoals != null && profileGoals.isNotEmpty) {
+      final firstGoal = profileGoals.first;
+
       return (firstGoal.replaceAll('-', ' ').capitalizeFirst ?? firstGoal).tr;
     }
+
     return "General Fitness".tr;
   }
 
+  // ============================================================
+  // STREAK
+  // ============================================================
+
   int get _streakDays {
     final user = _authController.currentUser.value;
+
     if (user != null && user['current_streak'] != null) {
       return int.tryParse(user['current_streak'].toString()) ?? 0;
     }
+
     return 5;
   }
 
+  // ============================================================
+  // POINTS
+  // ============================================================
+
   int get _points {
     final user = _authController.currentUser.value;
+
     if (user != null && user['points'] != null) {
       return int.tryParse(user['points'].toString()) ?? 0;
     }
+
     return 120;
   }
+
+  // ============================================================
+  // AI RECOMMENDATION
+  // ============================================================
 
   String get _aiRecommendation {
     if (_aiController.isRecommending.value) {
@@ -120,6 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final responseData = _aiController.recommendations.value?.data;
+
     if (responseData == null) {
       return "Stay hydrated, maintain your diet, and complete your daily goals to keep your streak going!"
           .tr;
@@ -128,13 +268,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (responseData is Map<String, dynamic>) {
       if (responseData['recommendations'] is List) {
         final List recs = responseData['recommendations'];
+
         if (recs.isNotEmpty) {
           final firstRec = recs.first;
-          final title = firstRec['title'] ?? 'Recommendation'.tr;
-          final desc = firstRec['description'] ?? '';
-          return "$title: $desc";
+
+          if (firstRec is Map) {
+            final title = firstRec['title'] ?? 'Recommendation'.tr;
+
+            final desc = firstRec['description'] ?? '';
+
+            return "$title: $desc";
+          }
+
+          if (firstRec != null) {
+            return firstRec.toString();
+          }
         }
       }
+
       return responseData['recommendation']?.toString() ??
           responseData['daily_tip']?.toString() ??
           responseData['message']?.toString() ??
@@ -142,96 +293,219 @@ class _DashboardScreenState extends State<DashboardScreen> {
           "Stay consistent with your routine today!".tr;
     }
 
-    if (responseData is String) return responseData;
+    if (responseData is String) {
+      return responseData;
+    }
+
     return "Stay consistent with your routine today!".tr;
   }
 
-  void _onBottomNavigationTap(int index) {
-    if (_currentIndex == index) return;
+  // ============================================================
+  // SAFE NAVIGATION
+  //
+  // IMPORTANT:
+  // Do not update the dashboard's selected tab before
+  // navigating to another route.
+  //
+  // Dashboard always remains HOME (index 0).
+  // ============================================================
 
-    setState(() {
-      _currentIndex = index;
-    });
+  Future<void> _navigateTo(String route) async {
+    if (_isNavigating) return;
+
+    _isNavigating = true;
+
+    try {
+      await Get.toNamed<dynamic>(route);
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Dashboard Navigation] Error opening $route: $e');
+
+      debugPrint('$stackTrace');
+    } finally {
+      _isNavigating = false;
+    }
+  }
+
+  // ============================================================
+  // BOTTOM NAVIGATION
+  // ============================================================
+
+  void _onBottomNavigationTap(int index) {
+    debugPrint('🔹 [Dashboard Bottom Nav] Tapped index: $index');
 
     switch (index) {
+      // --------------------------------------------------------
+      // HOME
+      // --------------------------------------------------------
+
       case 0:
+        // Already on the dashboard.
+        // No navigation or state change required.
         break;
+
+      // --------------------------------------------------------
+      // MY PLAN
+      // --------------------------------------------------------
+
       case 1:
-        Get.toNamed(AppRoutes.myPlan);
+        _navigateTo(AppRoutes.myPlan);
         break;
+
+      // --------------------------------------------------------
+      // PROGRESS
+      // --------------------------------------------------------
+
       case 2:
-        Get.toNamed(AppRoutes.progress);
+        _navigateTo(AppRoutes.progress);
         break;
+
+      // --------------------------------------------------------
+      // AI COACH
+      // --------------------------------------------------------
+
       case 3:
-        Get.toNamed(AppRoutes.aiCoach);
+        _navigateTo(AppRoutes.aiCoach);
         break;
+
+      // --------------------------------------------------------
+      // NUTRITIONIST
+      // --------------------------------------------------------
+
       case 4:
-        Get.toNamed(
-          AppRoutes.contactNutritionist,
-        ); // Expert Tab routes to Nutritionist List
+        _navigateTo(AppRoutes.contactNutritionist);
+        break;
+
+      default:
+        debugPrint('⚠️ [Dashboard Bottom Nav] Invalid index: $index');
+    }
+  }
+
+  // ============================================================
+  // NOTIFICATION
+  // ============================================================
+
+  void _onNotificationTap() {
+    _navigateTo(AppRoutes.notifications);
+  }
+
+  // ============================================================
+  // PROFILE
+  // ============================================================
+
+  void _onProfileTap() {
+    _navigateTo(AppRoutes.profile);
+  }
+
+  // ============================================================
+  // PLAN
+  // ============================================================
+
+  void _openPlan() {
+    _navigateTo(AppRoutes.generatedPlanDashboard);
+  }
+
+  // ============================================================
+  // NUTRITIONIST
+  // ============================================================
+
+  void _openNutritionist() {
+    _navigateTo(AppRoutes.contactNutritionist);
+  }
+
+  // ============================================================
+  // DRAWER
+  // ============================================================
+
+  void _onMenuTap() {
+    _scaffoldKey.currentState?.openDrawer();
+  }
+
+  // ============================================================
+  // DRAWER NAVIGATION
+  // ============================================================
+
+  void _onDrawerItemTap(int index) {
+    switch (index) {
+      case 0:
+        // Home
+        break;
+
+      case 1:
+        _navigateTo(AppRoutes.aiCoach);
+        break;
+
+      case 2:
+        _navigateTo(AppRoutes.myPlan);
+        break;
+
+      case 3:
+        _navigateTo(AppRoutes.progress);
+        break;
+
+      case 4:
+        _navigateTo(AppRoutes.notifications);
         break;
     }
   }
 
-  void _onNotificationTap() => Get.toNamed(AppRoutes.notifications);
-
-  // Profile icon tap navigates to Profile Screen
-  void _onProfileTap() => Get.toNamed(AppRoutes.profile);
-
-  void _openPlan() => Get.toNamed(AppRoutes.generatedPlan);
-  void _openNutritionist() => Get.toNamed(AppRoutes.contactNutritionist);
-  void _onMenuTap() => _scaffoldKey.currentState?.openDrawer();
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AppColors.background,
+
+      // ========================================================
+      // DRAWER
+      // ========================================================
       drawer: Obx(
         () => DashboardDrawer(
           userName: _userName,
           email: "user@example.com",
           profileImage: null,
-          onItemTap: (index) {
-            switch (index) {
-              case 0:
-                break;
-              case 1:
-                Get.toNamed(AppRoutes.aiCoach);
-                break;
-              case 2:
-                Get.toNamed(AppRoutes.myPlan);
-                break;
-              case 3:
-                Get.toNamed(AppRoutes.progress);
-                break;
-              case 4:
-                Get.toNamed(AppRoutes.notifications);
-                break;
-            }
-          },
+          onItemTap: _onDrawerItemTap,
         ),
       ),
+
+      // ========================================================
+      // BOTTOM NAVIGATION
+      //
+      // Always select HOME while this DashboardScreen
+      // is being displayed.
+      // ========================================================
       bottomNavigationBar: DashboardBottomNavBar(
-        currentIndex: _currentIndex,
+        currentIndex: _homeIndex,
         onTap: _onBottomNavigationTap,
       ),
+
+      // ========================================================
+      // BODY
+      // ========================================================
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             final height = constraints.maxHeight;
+
             final bool isTablet = width >= 700 || width > height;
 
             if (isTablet) {
               return _buildWideLayout(width: width, height: height);
             }
+
             return _buildPhoneLayout(width: width, height: height);
           },
         ),
       ),
     );
   }
+
+  // ============================================================
+  // PHONE LAYOUT
+  // ============================================================
 
   Widget _buildPhoneLayout({required double width, required double height}) {
     return RefreshIndicator(
@@ -243,13 +517,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           parent: AlwaysScrollableScrollPhysics(),
         ),
         slivers: [
+          // ====================================================
+          // APP BAR
+          // ====================================================
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             sliver: SliverToBoxAdapter(
               child: Obx(
                 () => DashboardAppBar(
                   userName: _userName,
-                  notificationCount: 3,
+                  notificationCount: _notificationController.unreadCount.value,
                   onMenuTap: _onMenuTap,
                   onNotificationTap: _onNotificationTap,
                   onProfileTap: _onProfileTap,
@@ -257,10 +534,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
+
+          // ====================================================
+          // DASHBOARD CONTENT
+          // ====================================================
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                // =================================================
+                // HEALTH SUMMARY
+                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 0),
                   child: Obx(
@@ -272,32 +556,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 16),
+
+                // =================================================
+                // QUICK ACTIONS
+                // =================================================
                 const DashboardSection(
                   animationDelay: Duration(milliseconds: 100),
                   child: QuickActionsSection(),
                 ),
+
                 const SizedBox(height: 16),
+
+                // =================================================
+                // TODAY OVERVIEW
+                // =================================================
                 const DashboardSection(
                   animationDelay: Duration(milliseconds: 180),
                   child: TodayOverviewSection(),
                 ),
+
                 const SizedBox(height: 16),
+
+                // =================================================
+                // TODAY SCHEDULE
+                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 260),
                   child: TodayScheduleCard(),
                 ),
+
                 const SizedBox(height: 16),
+
+                // =================================================
+                // WEEKLY PROGRESS
+                // =================================================
                 const DashboardSection(
                   animationDelay: Duration(milliseconds: 340),
                   child: WeeklyProgressCard(),
                 ),
+
                 const SizedBox(height: 16),
+
+                // =================================================
+                // NUTRITIONIST
+                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 380),
                   child: _buildNutritionistCard(),
                 ),
+
                 const SizedBox(height: 16),
+
+                // =================================================
+                // AI RECOMMENDATION
+                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 420),
                   child: Obx(
@@ -309,6 +623,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 40),
               ]),
             ),
@@ -317,6 +632,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // WIDE / TABLET / DESKTOP LAYOUT
+  // ============================================================
 
   Widget _buildWideLayout({required double width, required double height}) {
     final horizontalPadding = width >= 1400
@@ -346,16 +665,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // =============================================
+                  // APP BAR
+                  // =============================================
                   Obx(
                     () => DashboardAppBar(
                       userName: _userName,
-                      notificationCount: 3,
+                      notificationCount:
+                          _notificationController.unreadCount.value,
                       onMenuTap: _onMenuTap,
                       onNotificationTap: _onNotificationTap,
                       onProfileTap: _onProfileTap,
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
+                  // =============================================
+                  // HEALTH SUMMARY
+                  // =============================================
                   DashboardSection(
                     child: Obx(
                       () => HealthSummaryCard(
@@ -366,28 +694,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
+                  // =============================================
+                  // QUICK ACTIONS
+                  // =============================================
                   const DashboardSection(child: QuickActionsSection()),
+
                   const SizedBox(height: 16),
+
+                  // =============================================
+                  // MAIN CONTENT
+                  // =============================================
                   DashboardSection(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // =======================================
+                        // LEFT COLUMN
+                        // =======================================
                         const Expanded(
                           child: Column(
                             children: [
                               TodayOverviewSection(),
+
                               SizedBox(height: 24),
+
                               WeeklyProgressCard(),
                             ],
                           ),
                         ),
+
                         const SizedBox(width: 24),
+
+                        // =======================================
+                        // RIGHT COLUMN
+                        // =======================================
                         Expanded(
                           child: Column(
                             children: [
                               TodayScheduleCard(),
-                              SizedBox(height: 24),
+
+                              const SizedBox(height: 24),
+
                               _buildNutritionistCard(),
                             ],
                           ),
@@ -395,7 +745,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
+                  // =============================================
+                  // AI RECOMMENDATION
+                  // =============================================
                   DashboardSection(
                     child: Obx(
                       () => AIRecommendationCard(
@@ -406,6 +761,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 20),
                 ],
               ),
@@ -415,6 +771,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // NUTRITIONIST CARD
+  // ============================================================
 
   Widget _buildNutritionistCard() {
     return Container(
@@ -434,6 +794,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Row(
         children: [
+          // ====================================================
+          // ICON
+          // ====================================================
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -446,7 +809,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               size: 26,
             ),
           ),
+
           const SizedBox(width: 15),
+
+          // ====================================================
+          // CONTENT
+          // ====================================================
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -459,7 +827,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontSize: 15,
                   ),
                 ),
+
                 const SizedBox(height: 3),
+
                 Text(
                   "Consult with certified nutritionists for custom plans.".tr,
                   style: const TextStyle(
@@ -470,7 +840,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
+
           const SizedBox(width: 10),
+
+          // ====================================================
+          // CONSULT BUTTON
+          // ====================================================
           ElevatedButton(
             onPressed: _openNutritionist,
             style: ElevatedButton.styleFrom(

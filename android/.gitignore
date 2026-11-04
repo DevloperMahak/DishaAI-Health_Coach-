@@ -1,14 +1,48 @@
-gradle-wrapper.jar
-/.gradle
-/captures/
-/gradlew
-/gradlew.bat
-/local.properties
-GeneratedPluginRegistrant.java
-.cxx/
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
 
-# Remember to never publicly share your keystore.
-# See https://flutter.dev/to/reference-keystore
+# Android / Gradle
+.gradle/
+**/.gradle/
+android/.gradle/
+android/local.properties
+android/captures/
+android/.cxx/
+android/app/.cxx/
+
+# Gradle wrapper
+# Keep gradle-wrapper.jar and gradlew files in Git
+# Do not ignore these files
+
+# Generated files
+GeneratedPluginRegistrant.java
+
+# Signing credentials - NEVER upload
 key.properties
-**/*.keystore
-**/*.jks
+**/key.properties
+*.keystore
+*.jks
+*.p12
+*.pfx
+
+# Google Services - Firebase configuration
+google-services.json
+**/google-services.json
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db

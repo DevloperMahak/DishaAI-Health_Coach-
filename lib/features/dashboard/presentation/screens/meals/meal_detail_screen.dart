@@ -7,16 +7,16 @@ import 'package:image_picker/image_picker.dart';
 
 import 'meal_session.dart';
 
-class MealDetailsScreen extends StatefulWidget {
+class MealsdetailScreen extends StatefulWidget {
   final MealSession? meal;
 
-  const MealDetailsScreen({super.key, this.meal});
+  const MealsdetailScreen({super.key, this.meal});
 
   @override
-  State<MealDetailsScreen> createState() => _MealDetailsScreenState();
+  State<MealsdetailScreen> createState() => _MealsdetailScreenState();
 }
 
-class _MealDetailsScreenState extends State<MealDetailsScreen> {
+class _MealsdetailScreenState extends State<MealsdetailScreen> {
   // ============================================================
   // CONTROLLERS
   // ============================================================
@@ -24,35 +24,33 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   bool _isLogged = false;
-  bool _isFavorite = false;
   bool _isLoadingScan = false;
 
-  late MealSession _currentMeal;
+  // New Tracking fields for Food Logging payload
+  String? _scannedMasterFoodId;
+  bool _scannedIsVerified = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _currentMeal =
-        widget.meal ??
-        MealSession(
-          id: 'ai_scan_default',
-          name: "Scanned Food Analysis",
-          description:
-              "Search or scan a food item to get instant AI nutritional breakdown.",
-          mealType: "AI Scan",
-          calories: "0",
-          protein: "0",
-          carbs: "0",
-          fat: "0",
-          preparationTime: "0",
-          servingSize: "1 serving",
-          difficulty: "Easy",
-          imageUrl: "",
-          icon: Icons.restaurant_rounded,
-          ingredients: [],
-          benefits: [],
-        );
-  }
+  // Safe inline initialization to prevent LateInitializationError
+  late MealSession _currentMeal =
+      widget.meal ??
+      MealSession(
+        id: 'ai_scan_default',
+        name: "Scanned Food Analysis",
+        description:
+            "Search or scan a food item to get instant AI nutritional breakdown.",
+        mealType: "AI Scan",
+        calories: "0",
+        protein: "0",
+        carbs: "0",
+        fat: "0",
+        preparationTime: "0",
+        servingSize: "1 serving",
+        difficulty: "Easy",
+        imageUrl: "",
+        icon: Icons.restaurant_rounded,
+        ingredients: [],
+        benefits: [],
+      );
 
   @override
   void dispose() {
@@ -127,7 +125,7 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
   }
 
   // ============================================================
-  // 2. TEXT SEARCH / MANUAL AI QUERY FEATURE
+  // 2. TEXT SEARCH / MANUAL QUERY FEATURE
   // ============================================================
 
   Future<void> _searchFoodByName(String foodName) async {
@@ -138,92 +136,166 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
       _isLoadingScan = true;
     });
 
-    // Simulating quick intelligent lookup or passing to analysis handler
-    await Future.delayed(const Duration(milliseconds: 800));
+    final success = await _aiController.searchFoodByName(foodName);
 
     setState(() {
       _isLoadingScan = false;
-      _currentMeal = MealSession(
-        id: 'search_${DateTime.now().millisecondsSinceEpoch}',
-        name: foodName.capitalizeFirst ?? foodName,
-        description: "AI nutritional composition breakdown for $foodName.",
-        mealType: "AI Search",
-        calories: "340",
-        protein: "18",
-        carbs: "42",
-        fat: "10",
-        preparationTime: "10",
-        servingSize: "1 portion",
-        difficulty: "Easy",
-        imageUrl: "",
-        icon: Icons.local_dining_rounded,
-        ingredients: [
-          "Primary fresh ingredients of $foodName",
-          "Balanced macronutrient distribution",
-        ],
-        benefits: [
-          "Optimized for daily wellness targets",
-          "Provides steady energy release",
-        ],
-      );
     });
 
-    Get.snackbar(
-      'Analysis Successful',
-      'Generated nutrition details for $foodName',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: AppColors.surface,
-      colorText: AppColors.textPrimary,
-      margin: const EdgeInsets.all(16),
-      icon: const Icon(Icons.check_circle_rounded, color: AppColors.primary),
-    );
+    if (success) {
+      final responseData = _aiController.foodAnalysis.value?.data;
+
+      if (responseData == null ||
+          (responseData is List && responseData.isEmpty) ||
+          (responseData is Map && responseData.isEmpty)) {
+        Get.snackbar(
+          'Not Found',
+          'We could not find "$foodName" in our database.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.orangeAccent.shade200,
+          colorText: Colors.black87,
+          margin: const EdgeInsets.all(16),
+          icon: const Icon(Icons.search_off_rounded, color: Colors.black87),
+        );
+        return;
+      }
+
+      _parseScanResponse(responseData);
+
+      Get.snackbar(
+        'Analysis Successful',
+        'Generated nutrition details for ${foodName.capitalizeFirst}',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.surface,
+        colorText: AppColors.textPrimary,
+        margin: const EdgeInsets.all(16),
+        icon: const Icon(Icons.check_circle_rounded, color: AppColors.primary),
+      );
+    } else {
+      Get.snackbar(
+        'Search Failed',
+        _aiController.errorMessage.value.isNotEmpty
+            ? _aiController.errorMessage.value
+            : 'Could not find nutritional data for $foodName.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.redAccent.withOpacity(0.9),
+        colorText: Colors.white,
+        margin: const EdgeInsets.all(16),
+      );
+    }
   }
 
   // ============================================================
-  // PARSERS
+  // PARSERS (Updated to handle scan_result & escaped image URL)
   // ============================================================
 
   void _parseScanResponse(dynamic data) {
     if (data == null) return;
 
     Map<String, dynamic> mapData = {};
-    if (data is Map<String, dynamic>) {
-      mapData = data['food'] is Map ? data['food'] : data;
+
+    if (data is List && data.isNotEmpty) {
+      mapData = data.first is Map ? Map<String, dynamic>.from(data.first) : {};
+    } else if (data is Map) {
+      if (data.containsKey('scan_result') && data['scan_result'] is Map) {
+        mapData = Map<String, dynamic>.from(data['scan_result']);
+      } else if (data.containsKey('data') && data['data'] is Map) {
+        final innerData = data['data'];
+        if (innerData is Map &&
+            innerData.containsKey('scan_result') &&
+            innerData['scan_result'] is Map) {
+          mapData = Map<String, dynamic>.from(innerData['scan_result']);
+        } else {
+          mapData = Map<String, dynamic>.from(innerData);
+        }
+      } else if (data.containsKey('food') && data['food'] is Map) {
+        mapData = Map<String, dynamic>.from(data['food']);
+      } else {
+        mapData = Map<String, dynamic>.from(data);
+      }
     }
+
+    if (mapData.isEmpty) return;
+
+    final Map<String, dynamic> macros =
+        mapData.containsKey('macros') && mapData['macros'] is Map
+        ? Map<String, dynamic>.from(mapData['macros'])
+        : {};
+
+    _scannedMasterFoodId = mapData['master_food_id']?.toString();
+    _scannedIsVerified = mapData['is_verified'] ?? false;
+
+    // 💡 Completely clean and unescape slashes from backend image URL
+    String rawImageUrl =
+        mapData['image_url']?.toString() ??
+        mapData['image']?.toString() ??
+        mapData['image_path']?.toString() ??
+        "";
+
+    final cleanedImageUrl = rawImageUrl.replaceAll(r'\/', '/').trim();
+
+    debugPrint("🖼️ Final Cleaned Image URL: $cleanedImageUrl");
 
     setState(() {
       _currentMeal = MealSession(
         id:
             mapData['id']?.toString() ??
-            'scanned_${DateTime.now().millisecondsSinceEpoch}',
+            'scan_${DateTime.now().millisecondsSinceEpoch}',
         name:
-            mapData['name']?.toString() ??
             mapData['food_name']?.toString() ??
+            mapData['name']?.toString() ??
             "Analyzed Meal",
         description:
+            mapData['health_benefits']?.toString() ??
             mapData['description']?.toString() ??
-            "Identified via Rhea AI Food Scanner.",
-        mealType: mapData['meal_type']?.toString() ?? "Custom Scan",
-        calories: mapData['calories']?.toString() ?? '0',
-        protein: mapData['protein']?.toString() ?? '0',
-        carbs: mapData['carbs']?.toString() ?? '0',
-        fat: mapData['fat']?.toString() ?? '0',
-        preparationTime: mapData['preparation_time']?.toString() ?? '5',
-        servingSize: mapData['serving_size']?.toString() ?? "1 plate",
+            "Freshly prepared meal analyzed via Rhea AI.",
+        mealType:
+            mapData['suggested_meal_type']?.toString() ??
+            mapData['meal_type']?.toString() ??
+            "Snack",
+        calories: _safeString(
+          mapData['estimated_calories'] ?? mapData['calories'],
+        ),
+        protein: _safeString(
+          macros['protein_g'] ?? mapData['protein_g'] ?? mapData['protein'],
+        ),
+        carbs: _safeString(
+          macros['carbs_g'] ?? mapData['carbs_g'] ?? mapData['carbs'],
+        ),
+        fat: _safeString(macros['fat_g'] ?? mapData['fat_g'] ?? mapData['fat']),
+        preparationTime: _safeString(
+          mapData['preparation_time'],
+          fallback: '10',
+        ),
+        servingSize: mapData['serving_size']?.toString() ?? "1 portion",
         difficulty: mapData['difficulty']?.toString() ?? "Easy",
-        imageUrl: mapData['image_url']?.toString() ?? "",
+
+        // 💡 Assigning the fully sanitized image URL
+        imageUrl: cleanedImageUrl,
         icon: Icons.restaurant_rounded,
-        ingredients: _extractList(mapData['ingredients']),
-        benefits: _extractList(
-          mapData['benefits'] ?? mapData['health_benefits'],
+        ingredients: _extractListOrString(mapData['ingredients']),
+        benefits: _extractListOrString(
+          mapData['health_benefits'] ?? mapData['benefits'],
         ),
       );
     });
   }
 
-  List<String> _extractList(dynamic value) {
+  String _safeString(dynamic value, {String fallback = '0'}) {
+    if (value == null) return fallback;
+    if (value is num) {
+      return value.toDouble() == value.toInt()
+          ? value.toInt().toString()
+          : value.toStringAsFixed(1);
+    }
+    return value.toString();
+  }
+
+  List<String> _extractListOrString(dynamic value) {
     if (value is List) {
       return value.map((e) => e.toString()).toList();
+    } else if (value is String && value.trim().isNotEmpty) {
+      return [value];
     }
     return [];
   }
@@ -269,28 +341,61 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
     );
   }
 
-  void _logMeal() {
-    setState(() {
-      _isLogged = true;
-    });
-    Get.snackbar(
-      'Meal Logged',
-      '${_currentMeal.name} has been added to today\'s nutrition.',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: AppColors.surface,
-      colorText: AppColors.textPrimary,
-      margin: const EdgeInsets.all(16),
-      icon: const Icon(
-        Icons.check_circle_outline_rounded,
-        color: AppColors.primary,
-      ),
-    );
-  }
+  Future<void> _logMeal() async {
+    final String formattedDate = DateTime.now().toIso8601String().split('T')[0];
 
-  void _toggleFavorite() {
-    setState(() {
-      _isFavorite = !_isFavorite;
-    });
+    String normalizedMealType = _currentMeal.mealType.toLowerCase();
+    if (![
+      'breakfast',
+      'lunch',
+      'dinner',
+      'snack',
+    ].contains(normalizedMealType)) {
+      normalizedMealType = 'snack';
+    }
+
+    final success = await _aiController.logFood(
+      foodName: _currentMeal.name,
+      mealType: normalizedMealType,
+      calories: (num.tryParse(_currentMeal.calories) ?? 0)
+          .toInt(), // Enforce Integer
+      protein: num.tryParse(_currentMeal.protein) ?? 0,
+      carbs: num.tryParse(_currentMeal.carbs) ?? 0,
+      fat: num.tryParse(_currentMeal.fat) ?? 0,
+      servingSize: _currentMeal.servingSize,
+      date: formattedDate,
+      imageUrl: _currentMeal.imageUrl, // Added from API spec
+      // masterFoodId: _scannedMasterFoodId, // Not in POST /api/food-log spec
+      // isVerified: _scannedIsVerified,     // Not in POST /api/food-log spec
+    );
+
+    if (success) {
+      setState(() {
+        _isLogged = true;
+      });
+      Get.snackbar(
+        'Meal Logged',
+        '${_currentMeal.name} has been added to today\'s nutrition.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.surface,
+        colorText: AppColors.textPrimary,
+        margin: const EdgeInsets.all(16),
+        icon: const Icon(
+          Icons.check_circle_outline_rounded,
+          color: AppColors.primary,
+        ),
+      );
+    } else {
+      Get.snackbar(
+        'Error',
+        _aiController.errorMessage.value.isNotEmpty
+            ? _aiController.errorMessage.value
+            : 'Failed to log meal.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.redAccent,
+        colorText: Colors.white,
+      );
+    }
   }
 
   // ============================================================
@@ -330,7 +435,7 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
         children: [
           _buildTopBar(scale),
           SizedBox(height: 18 * scale),
-          _buildSearchBar(scale), // <--- Always visible Search Bar added here
+          _buildSearchBar(scale),
           SizedBox(height: 18 * scale),
           _buildMealHero(scale),
           SizedBox(height: 22 * scale),
@@ -465,29 +570,16 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
             ),
           ),
         ),
-        // Camera/Scan Button
         _circleButton(
           icon: Icons.camera_alt_outlined,
           onTap: _showScanOptions,
           scale: scale,
           iconColor: AppColors.primary,
         ),
-        SizedBox(width: 8 * scale),
-        _circleButton(
-          icon: _isFavorite
-              ? Icons.favorite_rounded
-              : Icons.favorite_border_rounded,
-          onTap: _toggleFavorite,
-          scale: scale,
-          iconColor: _isFavorite ? AppColors.primary : AppColors.textPrimary,
-        ),
       ],
     );
   }
 
-  // ============================================================
-  // VISIBLE SEARCH BAR WIDGET
-  // ============================================================
   Widget _buildSearchBar(double scale) {
     return Container(
       decoration: BoxDecoration(
@@ -500,7 +592,7 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
         style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
         onSubmitted: (value) => _searchFoodByName(value),
         decoration: InputDecoration(
-          hintText: "Search food name (e.g., Oatmeal, Paneer Tikka)...",
+          hintText: "Search food name (e.g., Apple, Paneer Tikka)...",
           hintStyle: TextStyle(
             color: AppColors.textSecondary.withOpacity(0.6),
             fontSize: 13,
@@ -553,7 +645,7 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          "Rhea AI is analyzing food...",
+                          "Rhea AI is analyzing image...",
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 13 * scale,
@@ -857,17 +949,30 @@ class _MealDetailsScreenState extends State<MealDetailsScreen> {
   }
 
   Widget _buildActionButtons(double scale) {
-    return ElevatedButton(
-      onPressed: _logMeal,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.black,
-        minimumSize: const Size(double.infinity, 50),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: Text(
-        _isLogged ? "Meal Logged Successfully" : "Log This Meal",
-        style: const TextStyle(fontWeight: FontWeight.w700),
+    return Obx(
+      () => ElevatedButton(
+        onPressed: _aiController.isLoggingFood.value ? null : _logMeal,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.black,
+          minimumSize: const Size(double.infinity, 50),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: _aiController.isLoggingFood.value
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.black,
+                  strokeWidth: 2,
+                ),
+              )
+            : const Text(
+                "Log This Meal",
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
       ),
     );
   }

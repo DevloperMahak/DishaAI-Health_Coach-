@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:audioplayers/audioplayers.dart'; // 💡 Audio Player package
 import '../../data/models/meditation_session.dart';
 import '../../../../app/theme/app_colors.dart';
 
 class MeditationPlayerScreen extends StatefulWidget {
   final MeditationSession session;
+  final String? audioUrl; // 💡 Added playback URL parameter from API
 
-  const MeditationPlayerScreen({super.key, required this.session});
+  const MeditationPlayerScreen({
+    super.key,
+    required this.session,
+    this.audioUrl,
+  });
 
   @override
   State<MeditationPlayerScreen> createState() => _MeditationPlayerScreenState();
@@ -15,35 +21,100 @@ class MeditationPlayerScreen extends StatefulWidget {
 class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
     with SingleTickerProviderStateMixin {
   // ============================================================
-  // STATE
+  // AUDIO PLAYER & STATE
   // ============================================================
-
+  late final AudioPlayer _audioPlayer;
   bool _isPlaying = false;
+  bool _isLoadingAudio = true;
   bool _backgroundSound = true;
 
-  double _progress = 0.28;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
   double _volume = 0.75;
 
   late final AnimationController _breathingController;
-
-  // ============================================================
-  // LIFECYCLE
-  // ============================================================
 
   @override
   void initState() {
     super.initState();
 
+    _audioPlayer = AudioPlayer();
+
     _breathingController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
     );
-
     _breathingController.repeat(reverse: true);
+
+    _initAudioPlayer();
+  }
+
+  Future<void> _initAudioPlayer() async {
+    try {
+      // Listen to player state changes
+      _audioPlayer.onPlayerStateChanged.listen((state) {
+        if (mounted) {
+          setState(() {
+            _isPlaying = state == PlayerState.playing;
+          });
+        }
+      });
+
+      // Listen to audio duration
+      _audioPlayer.onDurationChanged.listen((newDuration) {
+        if (mounted) {
+          setState(() {
+            _duration = newDuration;
+          });
+        }
+      });
+
+      // Listen to current playback position
+      _audioPlayer.onPositionChanged.listen((newPosition) {
+        if (mounted) {
+          setState(() {
+            _position = newPosition;
+          });
+        }
+      });
+
+      // Listen when audio completes
+      _audioPlayer.onPlayerComplete.listen((_) {
+        _completeSession();
+      });
+
+      // Default fallback sample URL if none provided by API
+      final url =
+          widget.audioUrl ??
+          'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+
+      debugPrint("🎵 Playing Meditation Audio From: $url");
+
+      await _audioPlayer.setSourceUrl(url);
+      await _audioPlayer.setVolume(_volume);
+      await _audioPlayer.resume(); // Start playing automatically
+
+      setState(() {
+        _isLoadingAudio = false;
+      });
+    } catch (e) {
+      debugPrint("❌ Audio Player Error: $e");
+      setState(() {
+        _isLoadingAudio = false;
+      });
+      Get.snackbar(
+        'Playback Error',
+        'Could not stream meditation audio.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.redAccent,
+        colorText: Colors.white,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _audioPlayer.dispose();
     _breathingController.dispose();
     super.dispose();
   }
@@ -52,30 +123,44 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
   // PLAYER ACTIONS
   // ============================================================
 
-  void _togglePlay() {
-    setState(() {
-      _isPlaying = !_isPlaying;
-    });
+  Future<void> _togglePlay() async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+    } else {
+      await _audioPlayer.resume();
+    }
   }
 
-  void _skipBack() {
-    setState(() {
-      _progress = (_progress - 0.05).clamp(0.0, 1.0);
-    });
+  Future<void> _skipBack() async {
+    final newPos = _position - const Duration(seconds: 10);
+    await _audioPlayer.seek(newPos < Duration.zero ? Duration.zero : newPos);
   }
 
-  void _skipForward() {
+  Future<void> _skipForward() async {
+    final newPos = _position + const Duration(seconds: 10);
+    if (newPos < _duration) {
+      await _audioPlayer.seek(newPos);
+    } else {
+      await _audioPlayer.seek(_duration);
+    }
+  }
+
+  Future<void> _onSeekChanged(double value) async {
+    final position = Duration(seconds: value.toInt());
+    await _audioPlayer.seek(position);
+  }
+
+  Future<void> _onVolumeChanged(double value) async {
     setState(() {
-      _progress = (_progress + 0.05).clamp(0.0, 1.0);
+      _volume = value;
     });
+    await _audioPlayer.setVolume(_volume);
   }
 
   void _completeSession() {
     setState(() {
-      _progress = 1.0;
       _isPlaying = false;
     });
-
     _showCompletionSheet();
   }
 
@@ -95,9 +180,6 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ----------------------------------------------------
-            // HANDLE
-            // ----------------------------------------------------
             Container(
               width: 42,
               height: 4,
@@ -106,12 +188,7 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                 borderRadius: BorderRadius.circular(20),
               ),
             ),
-
             const SizedBox(height: 24),
-
-            // ----------------------------------------------------
-            // SUCCESS ICON
-            // ----------------------------------------------------
             Container(
               width: 68,
               height: 68,
@@ -125,12 +202,7 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                 size: 34,
               ),
             ),
-
             const SizedBox(height: 17),
-
-            // ----------------------------------------------------
-            // TITLE
-            // ----------------------------------------------------
             const Text(
               'Meditation Complete',
               style: TextStyle(
@@ -139,12 +211,7 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                 fontWeight: FontWeight.w700,
               ),
             ),
-
             const SizedBox(height: 7),
-
-            // ----------------------------------------------------
-            // DESCRIPTION
-            // ----------------------------------------------------
             const Text(
               'Beautiful work. Take this calm feeling with you.',
               textAlign: TextAlign.center,
@@ -154,12 +221,7 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                 height: 1.4,
               ),
             ),
-
             const SizedBox(height: 22),
-
-            // ----------------------------------------------------
-            // STATS
-            // ----------------------------------------------------
             Row(
               children: [
                 Expanded(
@@ -176,12 +238,7 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                 ),
               ],
             ),
-
             const SizedBox(height: 25),
-
-            // ----------------------------------------------------
-            // DONE
-            // ----------------------------------------------------
             SizedBox(
               width: double.infinity,
               height: 48,
@@ -253,13 +310,8 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
     );
   }
 
-  // ============================================================
-  // RESPONSIVE PLAYER
-  // ============================================================
-
   Widget _buildPlayer({required double width, required double height}) {
     final scale = (width / 390).clamp(0.88, 1.15);
-
     final contentWidth = width >= 700 ? 560.0 : width - (40 * scale);
 
     return Center(
@@ -276,23 +328,10 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
           ),
           child: Column(
             children: [
-              // ==================================================
-              // TOP BAR
-              // ==================================================
               _buildTopBar(scale),
-
               SizedBox(height: 30 * scale),
-
-              // ==================================================
-              // MEDITATION ARTWORK
-              // ==================================================
               _buildMeditationArtwork(scale),
-
               SizedBox(height: 28 * scale),
-
-              // ==================================================
-              // TITLE
-              // ==================================================
               Text(
                 widget.session.title,
                 textAlign: TextAlign.center,
@@ -303,9 +342,7 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                   letterSpacing: -0.3,
                 ),
               ),
-
               SizedBox(height: 7 * scale),
-
               Text(
                 widget.session.duration,
                 style: TextStyle(
@@ -314,51 +351,21 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                   fontWeight: FontWeight.w600,
                 ),
               ),
-
               SizedBox(height: 27 * scale),
-
-              // ==================================================
-              // PROGRESS
-              // ==================================================
               _buildProgressSlider(scale),
-
               SizedBox(height: 5 * scale),
-
               _buildTimeRow(scale),
-
               SizedBox(height: 23 * scale),
-
-              // ==================================================
-              // MAIN CONTROLS
-              // ==================================================
-              _buildControls(scale),
-
+              _isLoadingAudio
+                  ? const CircularProgressIndicator(color: AppColors.primary)
+                  : _buildControls(scale),
               SizedBox(height: 28 * scale),
-
-              // ==================================================
-              // VOLUME
-              // ==================================================
               _buildVolumeControl(scale),
-
               SizedBox(height: 15 * scale),
-
-              // ==================================================
-              // BACKGROUND SOUND
-              // ==================================================
               _buildBackgroundSound(scale),
-
               SizedBox(height: 28 * scale),
-
-              // ==================================================
-              // BREATHING MESSAGE
-              // ==================================================
               _buildBreathingMessage(scale),
-
               SizedBox(height: 25 * scale),
-
-              // ==================================================
-              // COMPLETE
-              // ==================================================
               _buildCompleteButton(scale),
             ],
           ),
@@ -367,23 +374,18 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
     );
   }
 
-  // ============================================================
-  // TOP BAR
-  // ============================================================
-
   Widget _buildTopBar(double scale) {
     return Row(
       children: [
         _circleButton(
           icon: Icons.arrow_back_rounded,
           onTap: () {
+            _audioPlayer.stop();
             Get.back();
           },
           scale: scale,
         ),
-
         const Spacer(),
-
         Text(
           'MEDITATION',
           style: TextStyle(
@@ -393,114 +395,10 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
             letterSpacing: 1.5,
           ),
         ),
-
         const Spacer(),
-
-        _circleButton(
-          icon: Icons.more_horiz_rounded,
-          onTap: _showOptions,
-          scale: scale,
-        ),
       ],
     );
   }
-
-  // ============================================================
-  // OPTIONS
-  // ============================================================
-
-  void _showOptions() {
-    Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 30),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textSecondary.withOpacity(0.25),
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            _optionTile(
-              icon: Icons.bookmark_border_rounded,
-              title: 'Save Meditation',
-              onTap: () {
-                Get.back();
-
-                Get.snackbar(
-                  'Saved',
-                  'Meditation added to your saved sessions.',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: AppColors.surface,
-                  colorText: AppColors.textPrimary,
-                );
-              },
-            ),
-
-            _optionTile(
-              icon: Icons.share_outlined,
-              title: 'Share',
-              onTap: () {
-                Get.back();
-              },
-            ),
-
-            _optionTile(
-              icon: Icons.close_rounded,
-              title: 'Close Session',
-              onTap: () {
-                Get.back();
-                Get.back();
-              },
-            ),
-          ],
-        ),
-      ),
-      backgroundColor: Colors.transparent,
-    );
-  }
-
-  Widget _optionTile({
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      onTap: onTap,
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: AppColors.primary.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, color: AppColors.primary, size: 20),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // MEDITATION ARTWORK
-  // ============================================================
 
   Widget _buildMeditationArtwork(double scale) {
     return AnimatedBuilder(
@@ -508,9 +406,12 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
       builder: (context, child) {
         final value = _breathingController.value;
 
-        final outerSize = (215 + (value * 10)) * scale;
-        final middleSize = (170 + (value * 8)) * scale;
-        final innerSize = (125 + (value * 5)) * scale;
+        final outerSize = (235 + (value * 10)) * scale;
+        final middleSize = (195 + (value * 8)) * scale;
+        final innerSize = (165 + (value * 5)) * scale;
+
+        // Bigger image
+        final imageSize = 180 * scale;
 
         return SizedBox(
           width: outerSize,
@@ -545,34 +446,47 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
                         shape: BoxShape.circle,
                         gradient: RadialGradient(
                           colors: [
-                            AppColors.primary.withOpacity(0.22),
-                            AppColors.primary.withOpacity(0.07),
+                            AppColors.primary.withOpacity(0.18),
+                            AppColors.primary.withOpacity(0.06),
                             Colors.transparent,
                           ],
                         ),
                       ),
                       child: Center(
                         child: Container(
-                          width: 78 * scale,
-                          height: 78 * scale,
+                          width: imageSize,
+                          height: imageSize,
                           decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.10),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.primary.withOpacity(0.30),
+                              color: AppColors.primary.withOpacity(0.35),
+                              width: 2,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withOpacity(0.08),
-                                blurRadius: 25,
-                                spreadRadius: 4,
+                                color: AppColors.primary.withOpacity(0.18),
+                                blurRadius: 20 * scale,
+                                spreadRadius: 2 * scale,
                               ),
                             ],
                           ),
-                          child: Icon(
-                            Icons.self_improvement_rounded,
-                            color: AppColors.primary,
-                            size: 38 * scale,
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/images/Meditation_Pose.jpeg',
+                              width: imageSize,
+                              height: imageSize,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: AppColors.primary.withOpacity(0.10),
+                                  child: Icon(
+                                    Icons.self_improvement_rounded,
+                                    color: AppColors.primary,
+                                    size: 45 * scale,
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         ),
                       ),
@@ -587,11 +501,13 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
     );
   }
 
-  // ============================================================
-  // PROGRESS SLIDER
-  // ============================================================
-
   Widget _buildProgressSlider(double scale) {
+    final maxSec = _duration.inSeconds.toDouble();
+    final currentSec = _position.inSeconds.toDouble().clamp(
+      0.0,
+      maxSec > 0 ? maxSec : 1.0,
+    );
+
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
         trackHeight: 4 * scale,
@@ -603,37 +519,29 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
         overlayColor: AppColors.primary.withOpacity(0.10),
       ),
       child: Slider(
-        value: _progress,
+        value: currentSec,
+        min: 0.0,
+        max: maxSec > 0 ? maxSec : 1.0,
         onChanged: (value) {
-          setState(() {
-            _progress = value;
-          });
+          _onSeekChanged(value);
         },
       ),
     );
   }
 
-  // ============================================================
-  // TIME
-  // ============================================================
-
   Widget _buildTimeRow(double scale) {
-    final currentSeconds = _progress * widget.session.minutes * 60;
-
-    final totalSeconds = widget.session.minutes * 60;
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          _formatTime(currentSeconds),
+          _formatDuration(_position),
           style: TextStyle(
             color: AppColors.textSecondary,
             fontSize: 10 * scale,
           ),
         ),
         Text(
-          _formatTime(totalSeconds.toDouble()),
+          _formatDuration(_duration),
           style: TextStyle(
             color: AppColors.textSecondary,
             fontSize: 10 * scale,
@@ -643,18 +551,12 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
     );
   }
 
-  String _formatTime(double seconds) {
-    final totalSeconds = seconds.round();
-
-    final minutes = totalSeconds ~/ 60;
-    final remainingSeconds = totalSeconds % 60;
-
-    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
-
-  // ============================================================
-  // MAIN CONTROLS
-  // ============================================================
 
   Widget _buildControls(double scale) {
     return Row(
@@ -665,9 +567,7 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
           onTap: _skipBack,
           scale: scale,
         ),
-
         SizedBox(width: 30 * scale),
-
         GestureDetector(
           onTap: _togglePlay,
           child: Container(
@@ -676,28 +576,15 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
             decoration: BoxDecoration(
               color: AppColors.primary,
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withOpacity(0.18),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
             ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: Icon(
-                _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                key: ValueKey(_isPlaying),
-                color: Colors.black,
-                size: 31 * scale,
-              ),
+            child: Icon(
+              _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              color: Colors.black,
+              size: 31 * scale,
             ),
           ),
         ),
-
         SizedBox(width: 30 * scale),
-
         _playerControl(
           icon: Icons.forward_10_rounded,
           onTap: _skipForward,
@@ -712,22 +599,11 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
     required VoidCallback onTap,
     required double scale,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(30),
-        child: Padding(
-          padding: EdgeInsets.all(8 * scale),
-          child: Icon(icon, color: AppColors.textPrimary, size: 27 * scale),
-        ),
-      ),
+    return IconButton(
+      onPressed: onTap,
+      icon: Icon(icon, color: AppColors.textPrimary, size: 27 * scale),
     );
   }
-
-  // ============================================================
-  // VOLUME
-  // ============================================================
 
   Widget _buildVolumeControl(double scale) {
     return Row(
@@ -737,29 +613,14 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
           color: AppColors.textSecondary,
           size: 19 * scale,
         ),
-
         Expanded(
-          child: SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 3,
-              thumbShape: RoundSliderThumbShape(enabledThumbRadius: 5 * scale),
-              overlayShape: RoundSliderOverlayShape(overlayRadius: 12 * scale),
-              activeTrackColor: AppColors.primary,
-              inactiveTrackColor: AppColors.primary.withOpacity(0.10),
-              thumbColor: AppColors.primary,
-              overlayColor: AppColors.primary.withOpacity(0.10),
-            ),
-            child: Slider(
-              value: _volume,
-              onChanged: (value) {
-                setState(() {
-                  _volume = value;
-                });
-              },
-            ),
+          child: Slider(
+            value: _volume,
+            onChanged: _onVolumeChanged,
+            activeColor: AppColors.primary,
+            inactiveColor: AppColors.primary.withOpacity(0.10),
           ),
         ),
-
         Icon(
           Icons.volume_up_rounded,
           color: AppColors.textSecondary,
@@ -768,10 +629,6 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
       ],
     );
   }
-
-  // ============================================================
-  // BACKGROUND SOUND
-  // ============================================================
 
   Widget _buildBackgroundSound(double scale) {
     return Container(
@@ -786,64 +643,27 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
       ),
       child: Row(
         children: [
-          Container(
-            width: 38 * scale,
-            height: 38 * scale,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.09),
-              borderRadius: BorderRadius.circular(9 * scale),
-            ),
-            child: Icon(
-              Icons.waves_rounded,
-              color: AppColors.primary,
-              size: 19 * scale,
-            ),
-          ),
-
+          Icon(Icons.waves_rounded, color: AppColors.primary, size: 19 * scale),
           SizedBox(width: 11 * scale),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Background Sound',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 11.5 * scale,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Soft ambient sounds',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 9.5 * scale,
-                  ),
-                ),
-              ],
+          const Expanded(
+            child: Text(
+              'Background Ambient Sound',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-
           Switch(
             value: _backgroundSound,
-            onChanged: (value) {
-              setState(() {
-                _backgroundSound = value;
-              });
-            },
-            activeThumbColor: AppColors.primary,
-            activeTrackColor: AppColors.primary.withOpacity(0.30),
+            onChanged: (val) => setState(() => _backgroundSound = val),
+            activeColor: AppColors.primary,
           ),
         ],
       ),
     );
   }
-
-  // ============================================================
-  // BREATHING MESSAGE
-  // ============================================================
 
   Widget _buildBreathingMessage(double scale) {
     return Column(
@@ -856,82 +676,56 @@ class _MeditationPlayerScreenState extends State<MeditationPlayerScreen>
             fontWeight: FontWeight.w600,
           ),
         ),
-
-        SizedBox(height: 5 * scale),
-
+        const SizedBox(height: 5),
         Text(
           'Let your thoughts come and go without judgment.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: AppColors.textSecondary,
             fontSize: 10.5 * scale,
-            height: 1.4,
           ),
         ),
       ],
     );
   }
 
-  // ============================================================
-  // COMPLETE BUTTON
-  // ============================================================
-
   Widget _buildCompleteButton(double scale) {
     return SizedBox(
       width: double.infinity,
       height: 48 * scale,
       child: OutlinedButton(
-        onPressed: _completeSession,
+        onPressed: () {
+          _audioPlayer.stop();
+          _completeSession();
+        },
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.primary,
           side: BorderSide(color: AppColors.primary.withOpacity(0.35)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(11 * scale),
-          ),
         ),
-        child: Text(
+        child: const Text(
           'Complete Session',
-          style: TextStyle(fontSize: 12.5 * scale, fontWeight: FontWeight.w600),
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
     );
   }
-
-  // ============================================================
-  // CIRCLE BUTTON
-  // ============================================================
 
   Widget _circleButton({
     required IconData icon,
     required VoidCallback onTap,
     required double scale,
   }) {
-    final size = 42 * scale;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(size / 2),
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.primary.withOpacity(0.15)),
-          ),
-          child: Icon(icon, color: AppColors.textPrimary, size: 19 * scale),
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.primary.withOpacity(0.15)),
         ),
+        child: Icon(icon, color: AppColors.textPrimary, size: 19 * scale),
       ),
     );
   }
 }
-
-// ================================================================
-// MEDITATION SESSION MODEL
-// ================================================================
-//
-// Keep this model shared with MeditationHomeScreen later.
-// If you already have a model file, move this class there.
-//

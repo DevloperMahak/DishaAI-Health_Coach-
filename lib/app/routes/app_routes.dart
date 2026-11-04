@@ -43,6 +43,8 @@ class AppRoutes {
 
   static const String generatedPlan = '/generated-plan';
 
+  static const String generatedPlanDashboard = '/generated-plan-dashboard';
+
   static const String waterTracker = '/water-tracker';
 
   // ============================================================
@@ -137,8 +139,19 @@ class AppRoutes {
   static const String review = '/review';
 
   // ============================================================
+  // REMINDERS
+  // ============================================================
+
+  static const String reminders = '/reminders';
+
+  static const String createReminder = '/create-reminder';
+
+  static const String reminderSettings = '/reminder-settings';
+  // ============================================================
   // FALLBACK
   // ============================================================
+
+  static const String about = '/about';
 
   static const String notFound = '/not-found';
 }

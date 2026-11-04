@@ -247,6 +247,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
   // ============================================================
   // VERIFY OTP
   // ============================================================
+  // ============================================================
+  // VERIFY OTP
+  // ============================================================
+
   Future<void> _verifyOtp() async {
     if (!_isOtpComplete || _isVerifying) {
       return;
@@ -262,49 +266,98 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen>
     final otp = _enteredOtp;
 
     try {
+      // ========================================================
+      // STEP 1: VERIFY OTP
+      // ========================================================
+
       final response = await _authController.verifyOtp(
         mobile: widget.phoneNumber,
         otp: otp,
       );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      if (response['success'] == true) {
+      if (response['success'] != true) {
         setState(() {
           _isVerifying = false;
+          _errorMessage =
+              response['message']?.toString() ??
+              'Invalid verification code. Please try again.'.tr;
         });
 
+        for (final controller in _otpControllers) {
+          controller.clear();
+        }
+
+        _focusNodes.first.requestFocus();
+
+        return;
+      }
+
+      debugPrint('✅ OTP VERIFIED SUCCESSFULLY');
+
+      // ========================================================
+      // STEP 2: FETCH LATEST USER FROM BACKEND
+      // ========================================================
+
+      debugPrint('🔄 FETCHING CURRENT USER FROM /auth/me');
+
+      final userResponse = await _authController.getCurrentUser();
+
+      if (!mounted) return;
+
+      // ========================================================
+      // STEP 3: HANDLE USER FETCH FAILURE
+      // ========================================================
+
+      if (userResponse['success'] != true) {
+        debugPrint('❌ FAILED TO FETCH CURRENT USER');
+
+        setState(() {
+          _isVerifying = false;
+          _errorMessage =
+              'OTP verified, but we could not load your account. '
+              'Please check your connection and try logging in again.';
+        });
+
+        return;
+      }
+
+      // ========================================================
+      // STEP 4: GET BACKEND ONBOARDING STATUS
+      // ========================================================
+
+      final onboardingCompleted = userResponse['onboarding_completed'] == true;
+
+      debugPrint('========== OTP AUTH ROUTING ==========');
+      debugPrint('OTP VERIFIED: true');
+      debugPrint('ONBOARDING COMPLETED: $onboardingCompleted');
+      debugPrint('======================================');
+
+      // ========================================================
+      // STEP 5: NAVIGATE
+      // ========================================================
+
+      if (onboardingCompleted) {
+        debugPrint('➡️ NAVIGATING TO DASHBOARD');
+
+        Get.offAllNamed(AppRoutes.dashboard);
+      } else {
+        debugPrint('➡️ NAVIGATING TO ONBOARDING');
+
         Get.offAllNamed(AppRoutes.onboarding);
-        return;
       }
-
-      setState(() {
-        _isVerifying = false;
-        _errorMessage =
-            response['message'] ??
-            'Invalid verification code. Please try again.'.tr; // Translated
-      });
-
-      for (final controller in _otpControllers) {
-        controller.clear();
-      }
-
-      _focusNodes.first.requestFocus();
     } catch (e) {
-      if (!mounted) {
-        return;
-      }
+      debugPrint('❌ OTP VERIFICATION ERROR: $e');
+
+      if (!mounted) return;
 
       setState(() {
         _isVerifying = false;
-        _errorMessage =
-            'Something went wrong. Please try again.'.tr; // Translated
+        _errorMessage = 'Something went wrong. Please try again.'.tr;
       });
     }
   }
-
   // ============================================================
   // RESEND OTP
   // ============================================================

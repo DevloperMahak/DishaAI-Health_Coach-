@@ -115,4 +115,61 @@ class HealthNutritionService {
       return false;
     }
   }
+  // ================= SLEEP =================
+
+  // ================= SLEEP =================
+
+  Future<SleepLogModel?> logSleep({
+    required String date,
+    required double sleepHours,
+  }) async {
+    try {
+      final payload = {'date': date, 'sleep_hours': sleepHours};
+
+      print('====================================');
+      print('🌙 [SLEEP SERVICE] REQUEST STARTED');
+      print('📍 Endpoint: POST /sleep');
+      print('📦 Payload: $payload');
+      print('🔐 Token available: ${_token?.isNotEmpty == true}');
+      print('====================================');
+
+      final response = await _dio.post(
+        '/sleep',
+        data: payload,
+        options: _authHeader,
+      );
+
+      print('✅ [SLEEP SERVICE] SUCCESS');
+      print('📊 Status: ${response.statusCode}');
+      print('📥 Response: ${response.data}');
+
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          response.data != null) {
+        final responseBody = Map<String, dynamic>.from(response.data);
+
+        final sleepData = responseBody['data'] is Map
+            ? Map<String, dynamic>.from(responseBody['data'])
+            : responseBody;
+
+        return SleepLogModel.fromJson(sleepData);
+      }
+
+      return null;
+    } on DioException catch (e) {
+      print('====================================');
+      print('❌ [SLEEP SERVICE] API ERROR');
+      print('📍 URL: ${e.requestOptions.uri}');
+      print('📌 Method: ${e.requestOptions.method}');
+      print('📊 Status Code: ${e.response?.statusCode}');
+      print('📥 Server Response: ${e.response?.data}');
+      print('📝 Error Type: ${e.type}');
+      print('📝 Error Message: ${e.message}');
+      print('====================================');
+
+      return null;
+    } catch (e) {
+      print('❌ [SLEEP SERVICE] Unexpected Error: $e');
+      return null;
+    }
+  }
 }

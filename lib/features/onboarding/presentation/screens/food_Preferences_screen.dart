@@ -25,24 +25,43 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
   // CONTROLLERS
   //===============================================================
 
-  // Inject the HealthProfileController
   final HealthProfileController _healthProfileController =
       Get.find<HealthProfileController>();
 
   //===============================================================
-  // FOOD OPTIONS
+  // FOOD OPTIONS (Restricted to the 4 backend-supported values)
   //===============================================================
 
   final List<_FoodPreference> _foods = const [
-    _FoodPreference(title: "Vegetarian", icon: Icons.eco_outlined),
-    _FoodPreference(title: "Non-Vegetarian", icon: Icons.restaurant_outlined),
-    _FoodPreference(title: "Vegan", icon: Icons.spa_outlined),
-    _FoodPreference(title: "Eggetarian", icon: Icons.egg_alt_outlined),
-    _FoodPreference(title: "Pescatarian", icon: Icons.set_meal_outlined),
-    _FoodPreference(title: "Jain", icon: Icons.local_florist_outlined),
+    _FoodPreference(
+      title: "Vegetarian",
+      icon: Icons.eco_outlined,
+      apiValue: "vegetarian",
+    ),
+    _FoodPreference(
+      title: "Non-Vegetarian",
+      icon: Icons.restaurant_outlined,
+      apiValue: "non_vegetarian",
+    ),
+    _FoodPreference(
+      title: "Eggitarian",
+      icon: Icons.egg_alt_outlined,
+      apiValue: "eggetarian",
+    ),
+    _FoodPreference(
+      title: "Vegan",
+      icon: Icons.spa_outlined,
+      apiValue: "vegan",
+    ),
   ];
 
-  int? _selectedFood = 2;
+// ============================================================
+// SELECTED FOOD
+// No option selected by default.
+// User must manually select their diet preference.
+// ============================================================
+
+int? _selectedFood;
 
   //===============================================================
   // ANIMATION
@@ -91,22 +110,13 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
   // NAVIGATION & API INTEGRATION
   //===============================================================
 
-  void _goBack() {
-    Get.back();
-  }
-
-  void _skip() {
-    Get.toNamed(AppRoutes.challengeSelection);
-  }
-
   Future<void> _next() async {
     if (_selectedFood == null) {
       _showValidation();
       return;
     }
 
-    // Transform "Vegetarian" to "vegetarian", "Non-Vegetarian" to "non-vegetarian", etc.
-    final dietType = _foods[_selectedFood!].title.toLowerCase();
+    final dietType = _foods[_selectedFood!].apiValue;
 
     debugPrint("Selected Food to API : $dietType");
 
@@ -143,10 +153,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
     );
   }
 
-  // ============================================================
-  // SKIP
-  // ============================================================
-
   void _skipOnboarding() {
     FocusScope.of(context).unfocus();
     Get.toNamed(AppRoutes.challengeSelection);
@@ -177,10 +183,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
       ),
     );
   }
-
-  //===============================================================
-  // PHONE
-  //===============================================================
 
   Widget _buildPhoneLayout({required double width, required double height}) {
     final horizontalPadding = _getHorizontalPadding(width);
@@ -224,10 +226,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
     );
   }
 
-  //===============================================================
-  // TABLET
-  //===============================================================
-
   Widget _buildTabletLayout({required double width, required double height}) {
     final contentWidth = width >= 1100 ? 620.0 : 560.0;
 
@@ -264,10 +262,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
     );
   }
 
-  //===============================================================
-  // RESPONSIVE HELPERS
-  //===============================================================
-
   double _getHorizontalPadding(double width) {
     if (width <= 340) return 16;
     if (width <= 375) return 18;
@@ -286,91 +280,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
   double _getScale(double width) {
     return (width / 390).clamp(0.88, 1.15);
   }
-
-  //===============================================================
-  // TOP BAR
-  //===============================================================
-
-  Widget _buildTopBar({required double width, required bool compact}) {
-    final scale = _getScale(width);
-
-    return SizedBox(
-      height: compact ? 30 : 34,
-      child: Row(
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _goBack,
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Icon(
-                  Icons.arrow_back_rounded,
-                  color: AppColors.textPrimary,
-                  size: (22 * scale).clamp(20.0, 25.0),
-                ),
-              ),
-            ),
-          ),
-          const Spacer(),
-          GestureDetector(
-            onTap: _skip,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              child: Text(
-                "Skip",
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: (13.5 * scale).clamp(12.5, 15.0),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  //===============================================================
-  // PROGRESS
-  //===============================================================
-
-  Widget _buildProgressSection({required double width, required bool compact}) {
-    final scale = _getScale(width);
-
-    return Row(
-      children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: SizedBox(
-              height: (5 * scale).clamp(4.0, 6.0),
-              child: LinearProgressIndicator(
-                value: _currentStep / _totalSteps,
-                backgroundColor: AppColors.primary.withOpacity(.16),
-                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          "$_currentStep/$_totalSteps",
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w600,
-            fontSize: (12 * scale).clamp(11.0, 13.5),
-          ),
-        ),
-      ],
-    );
-  }
-
-  //===============================================================
-  // HEADER
-  //===============================================================
 
   Widget _buildHeader({required double width, required bool compact}) {
     final scale = _getScale(width);
@@ -400,10 +309,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
     );
   }
 
-  //===============================================================
-  // LIST
-  //===============================================================
-
   Widget _buildFoodList({required double width, required bool compact}) {
     return Column(
       children: List.generate(
@@ -420,10 +325,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
       ),
     );
   }
-
-  //===============================================================
-  // CARD
-  //===============================================================
 
   Widget _buildFoodCard({
     required _FoodPreference food,
@@ -501,10 +402,6 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
     );
   }
 
-  //===============================================================
-  // NEXT BUTTON
-  //===============================================================
-
   Widget _buildNextButton({required double width}) {
     final enabled = _selectedFood != null;
     final radius = (_getScale(width) * 9).clamp(8.0, 11.0);
@@ -574,13 +471,14 @@ class _FoodPreferencesScreenState extends State<FoodPreferencesScreen>
   }
 }
 
-//===============================================================
-// MODEL
-//===============================================================
-
 class _FoodPreference {
   final String title;
   final IconData icon;
+  final String apiValue;
 
-  const _FoodPreference({required this.title, required this.icon});
+  const _FoodPreference({
+    required this.title,
+    required this.icon,
+    required this.apiValue,
+  });
 }

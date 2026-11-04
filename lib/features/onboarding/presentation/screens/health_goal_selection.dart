@@ -136,11 +136,43 @@ class _PrimaryHealthGoalScreenState extends State<PrimaryHealthGoalScreen>
     final goals = _masterDataController.masterData.value?.goals ?? [];
     if (_selectedGoalIndex! < goals.length) {
       final selectedGoal = goals[_selectedGoalIndex!];
-      _controller.setPrimaryHealthGoal(selectedGoal.slug ?? '');
-    }
+      final goalSlug = selectedGoal.slug ?? '';
 
-    if (!mounted) return;
-    Get.toNamed(AppRoutes.personalInfo);
+      // 💡 1. Call the controller method to save the primary health goal to the backend API
+      final success = await _controller.savePrimaryHealthGoal(goal: goalSlug);
+
+      if (!mounted) return;
+
+      if (success) {
+        Get.snackbar(
+          'Success'.tr,
+          'Goal saved successfully.'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: AppColors.surface,
+          colorText: AppColors.textPrimary,
+          margin: const EdgeInsets.all(16),
+          borderRadius: 14,
+          icon: const Icon(
+            Icons.check_circle_rounded,
+            color: AppColors.primary,
+          ),
+        );
+
+        // 💡 2. Navigate to the next screen only after successful API save
+        Get.toNamed(AppRoutes.personalInfo);
+      } else {
+        Get.snackbar(
+          'Error'.tr,
+          _controller.errorMessage.value.isNotEmpty
+              ? _controller.errorMessage.value
+              : 'Failed to save goal. Please try again.'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: AppColors.surface,
+          colorText: Colors.redAccent,
+          margin: const EdgeInsets.all(16),
+        );
+      }
+    }
   }
 
   void _skipOnboarding() {

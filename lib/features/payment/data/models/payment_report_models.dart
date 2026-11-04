@@ -2,7 +2,7 @@ class PaymentOrderModel {
   final String orderId;
   final num amount;
   final String currency;
-  final String key; // <-- Added key field
+  final String key;
 
   PaymentOrderModel({
     required this.orderId,
@@ -12,13 +12,31 @@ class PaymentOrderModel {
   });
 
   factory PaymentOrderModel.fromJson(Map<String, dynamic> json) {
+    final orderId = (json['order_id'] ?? json['id'])?.toString().trim() ?? '';
+
+    final amount = num.tryParse(json['amount']?.toString() ?? '');
+
+    final currency = json['currency']?.toString().trim() ?? 'INR';
+
+    final key = json['key']?.toString().trim() ?? '';
+
+    if (orderId.isEmpty) {
+      throw FormatException('Razorpay order ID missing from backend response');
+    }
+
+    if (amount == null || amount <= 0) {
+      throw FormatException('Invalid Razorpay order amount');
+    }
+
+    if (key.isEmpty) {
+      throw FormatException('Razorpay key missing from backend response');
+    }
+
     return PaymentOrderModel(
-      orderId: json['order_id']?.toString() ?? json['id']?.toString() ?? '',
-      amount: num.tryParse(json['amount']?.toString() ?? '3') ?? 3,
-      currency: json['currency']?.toString() ?? 'INR',
-      key:
-          json['key']?.toString() ??
-          'rzp_test_TXVMk5jbyx2sAL', // Fallback key if not provided by backend
+      orderId: orderId,
+      amount: amount,
+      currency: currency,
+      key: key,
     );
   }
 }

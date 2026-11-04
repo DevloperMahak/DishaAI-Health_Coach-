@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../../../app/theme/app_colors.dart';
 
 class WeightProgressCard extends StatelessWidget {
@@ -14,29 +13,38 @@ class WeightProgressCard extends StatelessWidget {
   final double targetWeight;
   final double startingWeight;
 
-  double _scale(double width) {
-    return (width / 390).clamp(.88, 1.12);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final scale = _scale(width);
+    final double change = currentWeight - startingWeight;
+    final bool lost = change < -0.0001;
+    final bool gained = change > 0.0001;
+    final String changeTitle = lost
+        ? 'Lost'
+        : gained
+        ? 'Gained'
+        : 'No Change';
+    final IconData changeIcon = lost
+        ? Icons.trending_down_rounded
+        : gained
+        ? Icons.trending_up_rounded
+        : Icons.remove_rounded;
 
-    final totalJourney = (startingWeight - targetWeight).abs();
-    final completed = (startingWeight - currentWeight).abs().clamp(
-      0.0,
-      totalJourney,
-    );
-
-    final progress = totalJourney == 0
-        ? 1.0
-        : (completed / totalJourney).clamp(0.0, 1.0);
-
-    final remaining = (currentWeight - targetWeight).abs();
+    final double totalJourney = (targetWeight - startingWeight).abs();
+    final double movementTowardGoal = targetWeight < startingWeight
+        ? startingWeight - currentWeight
+        : targetWeight > startingWeight
+        ? currentWeight - startingWeight
+        : 0.0;
+    final double completed = movementTowardGoal
+        .clamp(0.0, totalJourney)
+        .toDouble();
+    final double progress = totalJourney == 0
+        ? (currentWeight == targetWeight ? 1.0 : 0.0)
+        : (completed / totalJourney).clamp(0.0, 1.0).toDouble();
+    final double remaining = (currentWeight - targetWeight).abs();
 
     return Container(
-      padding: EdgeInsets.all(20 * scale),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(24),
@@ -52,9 +60,6 @@ class WeightProgressCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          //--------------------------------------------------
-          // Header
-          //--------------------------------------------------
           Row(
             children: [
               Container(
@@ -69,89 +74,84 @@ class WeightProgressCard extends StatelessWidget {
                   color: AppColors.primary,
                 ),
               ),
-
-              SizedBox(width: 14 * scale),
-
-              Expanded(
+              const SizedBox(width: 14),
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Weight Progress",
+                      'Weight Progress',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
-                        fontSize: (17 * scale).clamp(16.0, 20.0),
+                        fontSize: 18,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    SizedBox(height: 4 * scale),
+                    SizedBox(height: 4),
                     Text(
-                      "Track your journey",
+                      'Track your journey',
                       style: TextStyle(
                         color: AppColors.textSecondary,
-                        fontSize: (12 * scale).clamp(11.0, 14.0),
+                        fontSize: 13,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
             ],
           ),
-
-          SizedBox(height: 24 * scale),
-
-          //--------------------------------------------------
-          // Current Weight
-          //--------------------------------------------------
+          const SizedBox(height: 24),
           Center(
             child: Column(
               children: [
-                Text(
-                  "${currentWeight.toStringAsFixed(1)} kg",
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: (36 * scale).clamp(32.0, 42.0),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${currentWeight.toStringAsFixed(1)} kg',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 36,
+                    ),
                   ),
                 ),
-                SizedBox(height: 6 * scale),
-                Text(
-                  "Current Weight",
+                const SizedBox(height: 6),
+                const Text(
+                  'Current Weight',
                   style: TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: (13 * scale).clamp(12.0, 15.0),
+                    fontSize: 14,
                   ),
                 ),
               ],
             ),
           ),
-
-          SizedBox(height: 24 * scale),
-
-          //--------------------------------------------------
-          // Progress Bar
-          //--------------------------------------------------
+          const SizedBox(height: 24),
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 10,
               backgroundColor: Colors.white10,
-              valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                AppColors.primary,
+              ),
             ),
           ),
-
-          SizedBox(height: 10 * scale),
-
+          const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "${startingWeight.toStringAsFixed(0)} kg",
+                '${startingWeight.toStringAsFixed(0)} kg',
                 style: const TextStyle(color: AppColors.textSecondary),
               ),
               Text(
-                "${targetWeight.toStringAsFixed(0)} kg",
+                '${targetWeight.toStringAsFixed(0)} kg',
                 style: const TextStyle(
                   color: AppColors.primary,
                   fontWeight: FontWeight.bold,
@@ -159,28 +159,21 @@ class WeightProgressCard extends StatelessWidget {
               ),
             ],
           ),
-
-          SizedBox(height: 24 * scale),
-
-          //--------------------------------------------------
-          // Stats
-          //--------------------------------------------------
+          const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
                 child: _WeightInfo(
-                  title: "Lost",
-                  value: "${completed.toStringAsFixed(1)} kg",
-                  icon: Icons.trending_down_rounded,
+                  title: changeTitle,
+                  value: '${change.abs().toStringAsFixed(1)} kg',
+                  icon: changeIcon,
                 ),
               ),
-
-              SizedBox(width: 12 * scale),
-
+              const SizedBox(width: 12),
               Expanded(
                 child: _WeightInfo(
-                  title: "Remaining",
-                  value: "${remaining.toStringAsFixed(1)} kg",
+                  title: 'Remaining',
+                  value: '${remaining.toStringAsFixed(1)} kg',
                   icon: Icons.flag_rounded,
                 ),
               ),
@@ -222,14 +215,19 @@ class _WeightInfo extends StatelessWidget {
               color: AppColors.textSecondary,
               fontSize: 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 5),
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
             ),
           ),
         ],

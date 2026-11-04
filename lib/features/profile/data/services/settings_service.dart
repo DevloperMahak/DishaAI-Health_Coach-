@@ -32,12 +32,16 @@ class SettingsService {
     // Construct the payload to send to the backend
     final Map<String, dynamic> payload = {
       'preferred_language': preferredLanguage,
-      'push_notifications': pushNotifications,
-      'microphone_access': microphoneAccess,
-      'unit_system': unitSystem,
 
-      // ⚠️ UNCOMMENT THE LINE BELOW if your backend throws a 422 error
-      // 'dark_mode': false,
+      // Send both keys to ensure backend picks up the push notification setting
+      'push_notifications': pushNotifications,
+      'hydration_reminder_enabled': pushNotifications,
+
+      // Send both keys to ensure backend picks up the microphone setting
+      'microphone_access': microphoneAccess,
+      'microphone_enabled': microphoneAccess,
+
+      'unit_system': unitSystem,
     };
 
     debugPrint('🌐 [API PUT] Sending update to /settings');
