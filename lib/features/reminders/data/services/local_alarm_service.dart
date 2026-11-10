@@ -422,12 +422,19 @@ class LocalAlarmService {
     required int minute,
   }) async {
     const weekdayMap = <String, int>{
+      'mon': DateTime.monday,
       'monday': DateTime.monday,
+      'tue': DateTime.tuesday,
       'tuesday': DateTime.tuesday,
+      'wed': DateTime.wednesday,
       'wednesday': DateTime.wednesday,
+      'thu': DateTime.thursday,
       'thursday': DateTime.thursday,
+      'fri': DateTime.friday,
       'friday': DateTime.friday,
+      'sat': DateTime.saturday,
       'saturday': DateTime.saturday,
+      'sun': DateTime.sunday,
       'sunday': DateTime.sunday,
     };
 

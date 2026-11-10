@@ -5,180 +5,218 @@ import 'package:get/get.dart';
 
 import '../../../../app/theme/app_colors.dart';
 
-class JourneyAheadScreen extends StatelessWidget {
+class JourneyAheadScreen extends StatefulWidget {
   const JourneyAheadScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final controller = Get.isRegistered<PremiumReportController>()
+  State<JourneyAheadScreen> createState() => _JourneyAheadScreenState();
+}
+
+class _JourneyAheadScreenState extends State<JourneyAheadScreen> {
+  late final PremiumReportController controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    controller = Get.isRegistered<PremiumReportController>()
         ? Get.find<PremiumReportController>()
         : Get.put(PremiumReportController());
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final double width = constraints.maxWidth;
-            final bool isTablet = width >= 600;
+    controller.fetchMembershipPlans();
+  }
 
-            return Column(
-              children: [
-                // ============================================================
-                // SCROLLABLE CONTENT AREA
-                // ============================================================
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+  String _formatPrice(dynamic price) {
+    final value = num.tryParse(price?.toString() ?? '');
+
+    if (value == null) return '';
+
+    return value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+  }
+
+  String _formatDuration(Map<String, dynamic>? plan) {
+    if (plan == null) return '';
+
+    final value = plan['duration_value']?.toString() ?? '';
+    final unit = plan['duration_unit']?.toString().toLowerCase() ?? '';
+
+    if (value.isEmpty || unit.isEmpty) return '';
+
+    final formattedUnit = value == '1' ? unit.replaceAll('s', '') : unit;
+
+    return '$value $formattedUnit';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final trialPlan = controller.getPlanByCode('initial_access');
+      final premiumPlan = controller.getPlanByCode('premium_monthly');
+
+      final trialPrice = _formatPrice(trialPlan?['price']);
+      final premiumPrice = _formatPrice(premiumPlan?['price']);
+      final trialDuration = _formatDuration(trialPlan);
+
+      final isLoading = controller.isMembershipLoading.value;
+      final isPaying = controller.isSubscribing.value;
+      final planAvailable = trialPlan != null;
+
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final double width = constraints.maxWidth;
+              final bool isTablet = width >= 600;
+
+              return Column(
+                children: [
+                  // ========================================================
+                  // SCROLLABLE CONTENT AREA
+                  // ========================================================
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isTablet ? width * 0.18 : 20,
+                        vertical: 24,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: isTablet ? 600 : double.infinity,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Your journey ahead!",
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: isTablet ? 28 : 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(height: 28),
+
+                              // VERTICAL TIMELINE
+                              Stack(
+                                children: [
+                                  Positioned(
+                                    left: 13,
+                                    top: 16,
+                                    bottom: 16,
+                                    child: Container(
+                                      width: 2,
+                                      color: AppColors.border,
+                                    ),
+                                  ),
+                                  Column(
+                                    children: [
+                                      _buildTimelineNode(
+                                        isCompleted: true,
+                                        isCurrent: false,
+                                        title: "Profile ready!",
+                                        subtitle:
+                                            "I've understood your goals. Now it's time to create your plan.",
+                                        isTablet: isTablet,
+                                      ),
+
+                                      const SizedBox(height: 24),
+
+                                      _buildTimelineUnlockNode(
+                                        isTablet,
+                                        trialPrice: trialPrice,
+                                        trialDuration: trialDuration,
+                                      ),
+
+                                      const SizedBox(height: 24),
+
+                                      _buildTimelineNode(
+                                        isCompleted: false,
+                                        isCurrent: false,
+                                        title: "Trial ends",
+                                        subtitle:
+                                            "I'll send you a reminder when the trial is ending.",
+                                        isTablet: isTablet,
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // PRICING INFORMATION
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      "• ",
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        premiumPrice.isNotEmpty
+                                            ? "Then, ₹$premiumPrice/mo after trial ends\n"
+                                                  "No hidden charges. You can cancel anytime."
+                                            : "Your membership pricing will be shown before payment.",
+                                        style: TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: isTablet ? 15 : 13.5,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 30),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ========================================================
+                  // STICKY BOTTOM BUTTON BAR
+                  // ========================================================
+                  Container(
                     padding: EdgeInsets.symmetric(
                       horizontal: isTablet ? width * 0.18 : 20,
-                      vertical: 24,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      border: Border(
+                        top: BorderSide(
+                          color: AppColors.border.withOpacity(0.4),
+                        ),
+                      ),
                     ),
                     child: Center(
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
                           maxWidth: isTablet ? 600 : double.infinity,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // ------------------------------------------------
-                            // TITLE
-                            // ------------------------------------------------
-                            Text(
-                              "Your journey ahead!",
-                              style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: isTablet ? 28 : 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            const SizedBox(height: 28),
-
-                            // ------------------------------------------------
-                            // VERTICAL TIMELINE
-                            // ------------------------------------------------
-                            Stack(
-                              children: [
-                                Positioned(
-                                  left: 13,
-                                  top: 16,
-                                  bottom: 16,
-                                  child: Container(
-                                    width: 2,
-                                    color: AppColors.border,
-                                  ),
-                                ),
-
-                                Column(
-                                  children: [
-                                    // STEP 1: PROFILE READY
-                                    _buildTimelineNode(
-                                      isCompleted: true,
-                                      isCurrent: false,
-                                      title: "Profile ready!",
-                                      subtitle:
-                                          "I've understood your goals. Now it's time to create your plan.",
-                                      isTablet: isTablet,
-                                    ),
-
-                                    const SizedBox(height: 24),
-
-                                    // STEP 2: UNLOCK HEALTH PLAN
-                                    _buildTimelineUnlockNode(isTablet),
-
-                                    const SizedBox(height: 24),
-
-                                    // STEP 3: TRIAL ENDS
-                                    _buildTimelineNode(
-                                      isCompleted: false,
-                                      isCurrent: false,
-                                      title: "Trial ends",
-                                      subtitle:
-                                          "I'll send you a reminder when the trial is ending.",
-                                      isTablet: isTablet,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 24),
-
-                            // ------------------------------------------------
-                            // PRICING INFORMATION
-                            // ------------------------------------------------
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "• ",
-                                    style: TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-
-                                  Expanded(
-                                    child: Text(
-                                      "Then, ₹399/mo after trial ends\n"
-                                      "No hidden charges. You can cancel anytime.",
-                                      style: TextStyle(
-                                        color: AppColors.textSecondary,
-                                        fontSize: isTablet ? 15 : 13.5,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 30),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ============================================================
-                // STICKY BOTTOM BUTTON BAR
-                // ============================================================
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isTablet ? width * 0.18 : 20,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    border: Border(
-                      top: BorderSide(color: AppColors.border.withOpacity(0.4)),
-                    ),
-                  ),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: isTablet ? 600 : double.infinity,
-                      ),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: isTablet ? 58 : 52,
-
-                        // ----------------------------------------------------
-                        // RAZORPAY PAYMENT BUTTON
-                        // ----------------------------------------------------
-                        child: Obx(() {
-                          final bool isLoading = controller.isSubscribing.value;
-
-                          return ElevatedButton(
-                            onPressed: isLoading
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: isTablet ? 58 : 52,
+                          child: ElevatedButton(
+                            onPressed: isLoading || isPaying || !planAvailable
                                 ? null
                                 : () async {
                                     debugPrint(
@@ -186,54 +224,25 @@ class JourneyAheadScreen extends StatelessWidget {
                                     );
 
                                     debugPrint(
-                                      '💳 User clicked Try for 3 days',
+                                      'User selected initial_access plan',
                                     );
 
-                                    // ------------------------------------------------
-                                    // START ₹3 ONBOARDING TRIAL PAYMENT
-                                    // ------------------------------------------------
-                                    //
-                                    // PremiumReportController handles:
-                                    //
-                                    // 1. POST /payment/create-order
-                                    // 2. Open Razorpay checkout
-                                    // 3. Receive payment success callback
-                                    // 4. POST /payment/verify
-                                    // 5. GET /auth/me
-                                    // 6. Confirm onboarding_completed
-                                    // 7. Navigate to Dashboard
-                                    //
-                                    // Navigation occurs in onSuccess after verification.
-                                    // ------------------------------------------------
-
                                     await controller.startSubscription(
-                                      amount: 3.0,
+                                      planCode: 'initial_access',
                                       description: 'Unlock Health Plan Trial',
-                                      // Called by PremiumReportController ONLY
-                                      // after payment verification, /auth/me,
-                                      // and onboarding_completed validation.
                                       onSuccess: () {
                                         debugPrint(
-                                          '✅ Trial verified. Opening dashboard...',
+                                          'Trial verified. Opening dashboard...',
                                         );
-                                        // Let Razorpay's callback finish before
-                                        // replacing the navigation stack.
+
                                         Future<void>.delayed(Duration.zero, () {
-                                          try {
-                                            Get.offAllNamed<void>(
-                                              AppRoutes.dashboard,
-                                            );
-                                          } catch (error, stackTrace) {
-                                            debugPrint(
-                                              '❌ Dashboard navigation: $error',
-                                            );
-                                            debugPrint('$stackTrace');
-                                          }
+                                          Get.offAllNamed<void>(
+                                            AppRoutes.dashboard,
+                                          );
                                         });
                                       },
                                     );
                                   },
-
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.black,
@@ -247,11 +256,7 @@ class JourneyAheadScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-
-                            // ------------------------------------------------
-                            // BUTTON CONTENT
-                            // ------------------------------------------------
-                            child: isLoading
+                            child: isLoading || isPaying
                                 ? const SizedBox(
                                     width: 24,
                                     height: 24,
@@ -264,33 +269,37 @@ class JourneyAheadScreen extends StatelessWidget {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
-                                        "Try for 3 days",
+                                        !planAvailable
+                                            ? 'Trial plan unavailable'
+                                            : trialDuration.isNotEmpty
+                                            ? 'Try for $trialDuration'
+                                            : trialPrice.isNotEmpty
+                                            ? 'Continue for ₹$trialPrice'
+                                            : 'Continue',
                                         style: TextStyle(
                                           fontSize: isTablet ? 18 : 16,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-
                                       const SizedBox(width: 8),
-
                                       const Icon(
                                         Icons.arrow_forward_rounded,
                                         size: 20,
                                       ),
                                     ],
                                   ),
-                          );
-                        }),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   // ============================================================
@@ -307,9 +316,6 @@ class JourneyAheadScreen extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --------------------------------------------------------
-        // TIMELINE DOT
-        // --------------------------------------------------------
         Container(
           width: 28,
           height: 28,
@@ -343,9 +349,6 @@ class JourneyAheadScreen extends StatelessWidget {
 
         const SizedBox(width: 14),
 
-        // --------------------------------------------------------
-        // TIMELINE CARD
-        // --------------------------------------------------------
         Expanded(
           child: Container(
             padding: EdgeInsets.all(isTablet ? 20 : 16),
@@ -365,9 +368,7 @@ class JourneyAheadScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   subtitle,
                   style: TextStyle(
@@ -388,13 +389,16 @@ class JourneyAheadScreen extends StatelessWidget {
   // UNLOCK HEALTH PLAN FEATURED TIMELINE NODE
   // ============================================================
 
-  Widget _buildTimelineUnlockNode(bool isTablet) {
+  Widget _buildTimelineUnlockNode(
+    bool isTablet, {
+    required String trialPrice,
+    required String trialDuration,
+  }) {
+    final priceText = trialPrice.isNotEmpty ? '₹$trialPrice' : '';
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // --------------------------------------------------------
-        // HIGHLIGHTED TIMELINE DOT
-        // --------------------------------------------------------
         Container(
           width: 28,
           height: 28,
@@ -417,9 +421,6 @@ class JourneyAheadScreen extends StatelessWidget {
 
         const SizedBox(width: 14),
 
-        // --------------------------------------------------------
-        // FEATURED CARD
-        // --------------------------------------------------------
         Expanded(
           child: Container(
             padding: EdgeInsets.all(isTablet ? 22 : 18),
@@ -438,11 +439,10 @@ class JourneyAheadScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ------------------------------------------------
-                // TITLE
-                // ------------------------------------------------
                 Text(
-                  "Unlock your health plan for just ₹3",
+                  priceText.isNotEmpty
+                      ? "Unlock your health plan for just $priceText"
+                      : "Unlock your health plan",
                   style: TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: isTablet ? 18 : 16,
@@ -450,11 +450,19 @@ class JourneyAheadScreen extends StatelessWidget {
                   ),
                 ),
 
+                if (trialDuration.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Access duration: $trialDuration',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: isTablet ? 13 : 12,
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 4),
 
-                // ------------------------------------------------
-                // DESCRIPTION
-                // ------------------------------------------------
                 Text(
                   "Will be created after consultation call, "
                   "understanding your goals and lifestyle.",
@@ -467,12 +475,8 @@ class JourneyAheadScreen extends StatelessWidget {
 
                 const SizedBox(height: 18),
 
-                // ------------------------------------------------
-                // PLAN FEATURES
-                // ------------------------------------------------
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    // Wrap avoids overflow inside the highlighted border.
                     final available = constraints.maxWidth;
                     final columns = available >= 300 ? 3 : 2;
                     const gap = 8.0;
@@ -525,10 +529,7 @@ class JourneyAheadScreen extends StatelessWidget {
   }) {
     return Container(
       width: width,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 4,
-        vertical: 10,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.surfaceSoft,
         borderRadius: BorderRadius.circular(12),
@@ -537,9 +538,7 @@ class JourneyAheadScreen extends StatelessWidget {
       child: Column(
         children: [
           Icon(icon, color: AppColors.primary, size: isTablet ? 24 : 20),
-
           const SizedBox(height: 6),
-
           Text(
             label,
             textAlign: TextAlign.center,

@@ -29,19 +29,87 @@ class PaymentReportService {
   }
 
   // ============================================================
-  // 1. CREATE RAZORPAY ORDER
-  // POST /payment/create-order
+  // 1. GET MEMBERSHIP PLANS
+  // GET /membership/plans
   // ============================================================
 
-  Future<PaymentOrderModel> createOrder(
-    num amount, {
-    String paymentType = 'onboarding_trial',
+  Future<List<Map<String, dynamic>>> getMembershipPlans() async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/membership/plans');
+
+    debugPrint('========== GET MEMBERSHIP PLANS ==========');
+    debugPrint('URL: $uri');
+
+    final response = await http.get(uri, headers: _headers());
+
+    debugPrint('STATUS: ${response.statusCode}');
+
+    final decoded = _decode(response);
+
+    if (!_isSuccessful(response, decoded)) {
+      throw Exception(_extractMessage(decoded));
+    }
+
+    final data = _extractData(decoded);
+    final plans = data['plans'];
+
+    if (plans is! List) {
+      throw Exception('Invalid membership plans response');
+    }
+
+    return plans
+        .whereType<Map>()
+        .map((plan) => Map<String, dynamic>.from(plan))
+        .toList();
+  }
+
+  // ============================================================
+  // 2. GET MEMBERSHIP STATUS
+  // GET /membership/status
+  // ============================================================
+
+  Future<Map<String, dynamic>> getMembershipStatus() async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/membership/status');
+
+    debugPrint('========== GET MEMBERSHIP STATUS ==========');
+    debugPrint('URL: $uri');
+
+    final response = await http.get(uri, headers: _headers());
+
+    debugPrint('STATUS: ${response.statusCode}');
+
+    final decoded = _decode(response);
+
+    if (!_isSuccessful(response, decoded)) {
+      throw Exception(_extractMessage(decoded));
+    }
+
+    return _extractData(decoded);
+  }
+
+  // ============================================================
+  // 3. CREATE MEMBERSHIP RAZORPAY ORDER
+  // POST /payment/create-order
+  //
+  // Request:
+  // {
+  //   "plan_code": "initial_access"
+  // }
+  //
+  // Amount is determined by backend.
+  // ============================================================
+
+  Future<PaymentOrderModel> createMembershipOrder({
+    required String planCode,
   }) async {
+    if (planCode.trim().isEmpty) {
+      throw Exception('Membership plan code is required');
+    }
+
     final uri = Uri.parse('${ApiConstants.baseUrl}/payment/create-order');
 
-    final body = {'amount': amount, 'payment_type': paymentType};
+    final body = {'plan_code': planCode.trim()};
 
-    debugPrint('========== CREATE PAYMENT ORDER ==========');
+    debugPrint('========== CREATE MEMBERSHIP ORDER ==========');
     debugPrint('URL: $uri');
     debugPrint('BODY: ${jsonEncode(body)}');
 
@@ -57,15 +125,23 @@ class PaymentReportService {
   }
 
   // ============================================================
-  // 2. VERIFY RAZORPAY PAYMENT
+  // 4. VERIFY MEMBERSHIP RAZORPAY PAYMENT
   // POST /payment/verify
+  //
+  // Request:
+  // {
+  //   "razorpay_order_id": "...",
+  //   "razorpay_payment_id": "...",
+  //   "razorpay_signature": "..."
+  // }
+  //
+  // Do not send payment_type or plan_code here.
   // ============================================================
 
-  Future<bool> verifyPayment({
+  Future<Map<String, dynamic>> verifyMembershipPayment({
     required String orderId,
     required String paymentId,
     required String signature,
-    String paymentType = 'onboarding_trial',
   }) async {
     if (orderId.trim().isEmpty ||
         paymentId.trim().isEmpty ||
@@ -76,16 +152,15 @@ class PaymentReportService {
     final uri = Uri.parse('${ApiConstants.baseUrl}/payment/verify');
 
     final body = {
-      'razorpay_order_id': orderId,
-      'razorpay_payment_id': paymentId,
-      'razorpay_signature': signature,
-      'payment_type': paymentType,
+      'razorpay_order_id': orderId.trim(),
+      'razorpay_payment_id': paymentId.trim(),
+      'razorpay_signature': signature.trim(),
     };
 
-    debugPrint('========== VERIFY PAYMENT ==========');
-    debugPrint('URL: $uri');
-    debugPrint('ORDER ID: $orderId');
-    debugPrint('PAYMENT ID: $paymentId');
+    debugPrint('========== VERIFY MEMBERSHIP PAYMENT ==========');
+    //debugPrint('URL: $uri');
+    //debugPrint('ORDER ID: $orderId');
+    //debugPrint('PAYMENT ID: $paymentId');
 
     final response = await http.post(
       uri,
@@ -97,19 +172,36 @@ class PaymentReportService {
 
     final decoded = _decode(response);
 
-    if (response.statusCode >= 200 &&
-        response.statusCode < 300 &&
-        decoded is Map<String, dynamic> &&
-        decoded['success'] == true) {
-      debugPrint('✅ Payment verified successfully');
-      return true;
+    if (!_isSuccessful(response, decoded)) {
+      throw Exception(_extractMessage(decoded));
     }
 
-    throw Exception(_extractMessage(decoded));
+    debugPrint('Membership payment verified successfully');
+
+    return _extractData(decoded);
   }
 
   // ============================================================
-  // 3. GET CURRENT USER / ONBOARDING STATUS
+  // 5. GET MEMBERSHIP HISTORY
+  // GET /membership/history
+  // ============================================================
+
+  Future<Map<String, dynamic>> getMembershipHistory() async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/membership/history');
+
+    final response = await http.get(uri, headers: _headers());
+
+    final decoded = _decode(response);
+
+    if (!_isSuccessful(response, decoded)) {
+      throw Exception(_extractMessage(decoded));
+    }
+
+    return _extractData(decoded);
+  }
+
+  // ============================================================
+  // 6. GET CURRENT USER / ONBOARDING STATUS
   // GET /auth/me
   // ============================================================
 
@@ -124,16 +216,11 @@ class PaymentReportService {
 
     final decoded = _decode(response);
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(_extractMessage(decoded));
-    }
-
-    if (decoded is! Map<String, dynamic> || decoded['success'] != true) {
+    if (!_isSuccessful(response, decoded)) {
       throw Exception(_extractMessage(decoded));
     }
 
     final data = _extractData(decoded);
-
     final user = data['user'];
 
     final onboardingCompleted =
@@ -144,7 +231,7 @@ class PaymentReportService {
   }
 
   // ============================================================
-  // 4. FETCH WEEKLY REPORT
+  // 7. FETCH WEEKLY REPORT
   // GET /reports/weekly
   // ============================================================
 
@@ -158,7 +245,7 @@ class PaymentReportService {
   }
 
   // ============================================================
-  // 5. FETCH MONTHLY REPORT
+  // 8. FETCH MONTHLY REPORT
   // GET /reports/monthly
   // ============================================================
 
@@ -178,10 +265,7 @@ class PaymentReportService {
   PaymentOrderModel _handleOrderResponse(http.Response response) {
     final decoded = _decode(response);
 
-    if (response.statusCode >= 200 &&
-        response.statusCode < 300 &&
-        decoded is Map<String, dynamic> &&
-        decoded['success'] == true) {
+    if (_isSuccessful(response, decoded)) {
       return PaymentOrderModel.fromJson(_extractData(decoded));
     }
 
@@ -196,10 +280,25 @@ class PaymentReportService {
     final decoded = _decode(response);
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (decoded is Map<String, dynamic> && decoded['success'] == false) {
+        throw Exception(_extractMessage(decoded));
+      }
+
       return HealthReportModel.fromJson(_extractData(decoded));
     }
 
     throw Exception(_extractMessage(decoded));
+  }
+
+  // ============================================================
+  // COMMON SUCCESS CHECK
+  // ============================================================
+
+  bool _isSuccessful(http.Response response, dynamic decoded) {
+    return response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        decoded is Map<String, dynamic> &&
+        decoded['success'] == true;
   }
 
   // ============================================================

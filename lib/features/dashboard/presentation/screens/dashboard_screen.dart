@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:disha_ai/features/ai_health_coach/presentation/controllers/ai_controller.dart';
 import 'package:disha_ai/features/authentication/presentation/controllers/auth_controller.dart';
 import 'package:disha_ai/features/dashboard/presentation/controllers/task_controller.dart';
 import 'package:disha_ai/features/dashboard/presentation/controllers/weekly_progress_controller.dart';
 import 'package:disha_ai/features/onboarding/presentation/controllers/health_profile_controller.dart';
 import 'package:disha_ai/features/notifications/presentation/controllers/notification_controller.dart';
+import 'package:disha_ai/features/payment/data/services/payment_report_service.dart';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -33,7 +36,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   // ============================================================
   // SCAFFOLD KEY
   // ============================================================
@@ -73,12 +77,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       : Get.put(NotificationController());
 
   // ============================================================
+  // MEMBERSHIP STATUS
+  // ============================================================
+
+  final PaymentReportService _paymentService = PaymentReportService();
+
+  bool _isCheckingMembership = false;
+  bool _isRedirectingForMembership = false;
+
+  // ============================================================
   // BOTTOM NAVIGATION
-  //
-  // Dashboard is the HOME screen.
-  //
-  // Other tabs open separate routes, so the dashboard itself
-  // must always display HOME as the selected tab.
   // ============================================================
 
   static const int _homeIndex = 0;
@@ -94,11 +102,186 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
 
+    WidgetsBinding.instance.addObserver(this);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      _loadDashboardData();
+      // Check backend membership when Dashboard opens.
+      unawaited(_checkMembershipStatus());
+
+      // Load existing dashboard data.
+      unawaited(_loadDashboardData());
     });
+  }
+
+  // ============================================================
+  // CHECK MEMBERSHIP STATUS FROM BACKEND
+  // GET /api/membership/status
+  // ============================================================
+
+  Future<void> _checkMembershipStatus() async {
+    if (!mounted || _isCheckingMembership || _isRedirectingForMembership) {
+      return;
+    }
+
+    _isCheckingMembership = true;
+
+    try {
+      debugPrint('🔄 [Membership] Checking membership status...');
+
+      final response = await _paymentService.getMembershipStatus();
+
+      if (!mounted || _isRedirectingForMembership) return;
+
+      if (response is! Map) {
+        debugPrint(
+          '⚠️ [Membership] Invalid membership response. '
+          'Keeping dashboard accessible.',
+        );
+        return;
+      }
+
+      final membership = _extractMembershipData(response);
+
+      final state = membership['state']?.toString().trim().toLowerCase();
+
+      final hasAccess = _parseBool(membership['has_access']);
+
+      debugPrint('📌 [Membership] State: $state');
+      debugPrint('📌 [Membership] Has access: $hasAccess');
+
+      // --------------------------------------------------------
+      // ACTIVE MEMBERSHIP
+      // --------------------------------------------------------
+
+      if ((state == 'active' || state == 'legacy_active') && hasAccess) {
+        debugPrint('✅ [Membership] Access is active.');
+        return;
+      }
+
+      // --------------------------------------------------------
+      // INITIAL OFFER
+      // --------------------------------------------------------
+
+      if (state == 'initial_offer') {
+        debugPrint(
+          '➡️ [Membership] Initial offer required. '
+          'Redirecting to Journey Ahead.',
+        );
+
+        _redirectForMembership(AppRoutes.journeyAhead);
+        return;
+      }
+
+      // --------------------------------------------------------
+      // EXPIRED MEMBERSHIP / TRIAL
+      // --------------------------------------------------------
+
+      if (state == 'upgrade_required') {
+        debugPrint(
+          '⛔ [Membership] Membership expired. '
+          'Redirecting to Upgrade Premium.',
+        );
+
+        _redirectForMembership(AppRoutes.upgradePremium);
+        return;
+      }
+
+      // --------------------------------------------------------
+      // UNKNOWN / INCONSISTENT RESPONSE
+      // --------------------------------------------------------
+
+      debugPrint(
+        '⚠️ [Membership] Unrecognized membership state: $state. '
+        'Keeping dashboard accessible until status can be checked again.',
+      );
+    } catch (e, stackTrace) {
+      // A network or server error does not prove that membership
+      // has expired. Keep the user on Dashboard and retry when
+      // the app resumes or the user refreshes.
+
+      debugPrint('⚠️ [Membership] Status check failed: $e');
+      debugPrint('$stackTrace');
+    } finally {
+      _isCheckingMembership = false;
+    }
+  }
+
+  // ============================================================
+  // EXTRACT MEMBERSHIP DATA
+  // ============================================================
+
+  Map<String, dynamic> _extractMembershipData(Map<dynamic, dynamic> response) {
+    final responseMap = Map<String, dynamic>.from(response);
+
+    // PaymentReportService.getMembershipStatus() normally returns
+    // the data map directly. This also supports a wrapped response.
+
+    final data = responseMap['data'];
+
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    return responseMap;
+  }
+
+  // ============================================================
+  // BOOLEAN PARSER
+  // ============================================================
+
+  bool _parseBool(dynamic value) {
+    if (value is bool) return value;
+
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized == 'true' || normalized == '1';
+    }
+
+    if (value is int) return value == 1;
+
+    return false;
+  }
+
+  // ============================================================
+  // REDIRECT BASED ON MEMBERSHIP
+  // ============================================================
+
+  void _redirectForMembership(String route) {
+    if (!mounted || _isRedirectingForMembership) return;
+
+    _isRedirectingForMembership = true;
+
+    debugPrint('➡️ [Membership] Redirecting to: $route');
+
+    Get.offAllNamed<void>(route);
+  }
+
+  // ============================================================
+  // APP LIFECYCLE
+  // ============================================================
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint(
+        '🔄 [Membership] App resumed. '
+        'Checking membership with backend.',
+      );
+
+      unawaited(_checkMembershipStatus());
+    }
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   // ============================================================
@@ -140,7 +323,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     } catch (e, stackTrace) {
       debugPrint('❌ [Dashboard] Failed to load dashboard data: $e');
-
       debugPrint('$stackTrace');
     }
   }
@@ -150,6 +332,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ============================================================
 
   Future<void> _refreshDashboard() async {
+    await _checkMembershipStatus();
+
+    if (!mounted || _isRedirectingForMembership) return;
+
     await _loadDashboardData();
   }
 
@@ -274,7 +460,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           if (firstRec is Map) {
             final title = firstRec['title'] ?? 'Recommendation'.tr;
-
             final desc = firstRec['description'] ?? '';
 
             return "$title: $desc";
@@ -302,16 +487,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ============================================================
   // SAFE NAVIGATION
-  //
-  // IMPORTANT:
-  // Do not update the dashboard's selected tab before
-  // navigating to another route.
-  //
-  // Dashboard always remains HOME (index 0).
   // ============================================================
 
   Future<void> _navigateTo(String route) async {
-    if (_isNavigating) return;
+    if (_isNavigating || _isRedirectingForMembership) return;
 
     _isNavigating = true;
 
@@ -319,7 +498,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await Get.toNamed<dynamic>(route);
     } catch (e, stackTrace) {
       debugPrint('❌ [Dashboard Navigation] Error opening $route: $e');
-
       debugPrint('$stackTrace');
     } finally {
       _isNavigating = false;
@@ -334,42 +512,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     debugPrint('🔹 [Dashboard Bottom Nav] Tapped index: $index');
 
     switch (index) {
-      // --------------------------------------------------------
-      // HOME
-      // --------------------------------------------------------
-
       case 0:
         // Already on the dashboard.
-        // No navigation or state change required.
         break;
-
-      // --------------------------------------------------------
-      // MY PLAN
-      // --------------------------------------------------------
 
       case 1:
         _navigateTo(AppRoutes.myPlan);
         break;
 
-      // --------------------------------------------------------
-      // PROGRESS
-      // --------------------------------------------------------
-
       case 2:
         _navigateTo(AppRoutes.progress);
         break;
 
-      // --------------------------------------------------------
-      // AI COACH
-      // --------------------------------------------------------
-
       case 3:
         _navigateTo(AppRoutes.aiCoach);
         break;
-
-      // --------------------------------------------------------
-      // NUTRITIONIST
-      // --------------------------------------------------------
 
       case 4:
         _navigateTo(AppRoutes.contactNutritionist);
@@ -472,9 +629,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       // ========================================================
       // BOTTOM NAVIGATION
-      //
-      // Always select HOME while this DashboardScreen
-      // is being displayed.
       // ========================================================
       bottomNavigationBar: DashboardBottomNavBar(
         currentIndex: _homeIndex,
@@ -517,9 +671,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           parent: AlwaysScrollableScrollPhysics(),
         ),
         slivers: [
-          // ====================================================
           // APP BAR
-          // ====================================================
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             sliver: SliverToBoxAdapter(
@@ -535,16 +687,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
 
-          // ====================================================
           // DASHBOARD CONTENT
-          // ====================================================
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // =================================================
                 // HEALTH SUMMARY
-                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 0),
                   child: Obx(
@@ -559,9 +707,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 16),
 
-                // =================================================
                 // QUICK ACTIONS
-                // =================================================
                 const DashboardSection(
                   animationDelay: Duration(milliseconds: 100),
                   child: QuickActionsSection(),
@@ -569,9 +715,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 16),
 
-                // =================================================
                 // TODAY OVERVIEW
-                // =================================================
                 const DashboardSection(
                   animationDelay: Duration(milliseconds: 180),
                   child: TodayOverviewSection(),
@@ -579,9 +723,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 16),
 
-                // =================================================
                 // TODAY SCHEDULE
-                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 260),
                   child: TodayScheduleCard(),
@@ -589,9 +731,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 16),
 
-                // =================================================
                 // WEEKLY PROGRESS
-                // =================================================
                 const DashboardSection(
                   animationDelay: Duration(milliseconds: 340),
                   child: WeeklyProgressCard(),
@@ -599,9 +739,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 16),
 
-                // =================================================
                 // NUTRITIONIST
-                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 380),
                   child: _buildNutritionistCard(),
@@ -609,9 +747,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 const SizedBox(height: 16),
 
-                // =================================================
                 // AI RECOMMENDATION
-                // =================================================
                 DashboardSection(
                   animationDelay: const Duration(milliseconds: 420),
                   child: Obx(
@@ -665,9 +801,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // =============================================
                   // APP BAR
-                  // =============================================
                   Obx(
                     () => DashboardAppBar(
                       userName: _userName,
@@ -681,9 +815,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                   const SizedBox(height: 16),
 
-                  // =============================================
                   // HEALTH SUMMARY
-                  // =============================================
                   DashboardSection(
                     child: Obx(
                       () => HealthSummaryCard(
@@ -697,30 +829,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                   const SizedBox(height: 16),
 
-                  // =============================================
                   // QUICK ACTIONS
-                  // =============================================
                   const DashboardSection(child: QuickActionsSection()),
 
                   const SizedBox(height: 16),
 
-                  // =============================================
                   // MAIN CONTENT
-                  // =============================================
                   DashboardSection(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // =======================================
                         // LEFT COLUMN
-                        // =======================================
                         const Expanded(
                           child: Column(
                             children: [
                               TodayOverviewSection(),
-
                               SizedBox(height: 24),
-
                               WeeklyProgressCard(),
                             ],
                           ),
@@ -728,16 +852,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                         const SizedBox(width: 24),
 
-                        // =======================================
                         // RIGHT COLUMN
-                        // =======================================
                         Expanded(
                           child: Column(
                             children: [
                               TodayScheduleCard(),
-
                               const SizedBox(height: 24),
-
                               _buildNutritionistCard(),
                             ],
                           ),
@@ -748,9 +868,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                   const SizedBox(height: 16),
 
-                  // =============================================
                   // AI RECOMMENDATION
-                  // =============================================
                   DashboardSection(
                     child: Obx(
                       () => AIRecommendationCard(
@@ -794,9 +912,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Row(
         children: [
-          // ====================================================
           // ICON
-          // ====================================================
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -812,9 +928,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(width: 15),
 
-          // ====================================================
           // CONTENT
-          // ====================================================
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -843,9 +957,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(width: 10),
 
-          // ====================================================
           // CONSULT BUTTON
-          // ====================================================
           ElevatedButton(
             onPressed: _openNutritionist,
             style: ElevatedButton.styleFrom(

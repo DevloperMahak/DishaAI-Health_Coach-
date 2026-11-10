@@ -252,32 +252,6 @@ class FcmNotificationService {
     }
   }
 
-  Future<void> logCurrentUserAndFcmToken() async {
-    try {
-      final token = await FirebaseMessaging.instance.getToken();
-
-      final user = GetStorage().read('current_user');
-
-      final userId = user is Map
-          ? user['id']?.toString() ?? user['_id']?.toString()
-          : null;
-
-      final tokenLast15 = (token != null && token.length >= 15)
-          ? token.substring(token.length - 15)
-          : token;
-
-      debugPrint('========== RHEAAI FCM DEBUG ==========');
-      debugPrint('[RHEAAI FCM] Logged-in User ID: ${userId ?? "NOT FOUND"}');
-      debugPrint('[RHEAAI FCM] Token available: ${token != null}');
-      debugPrint(
-        '[RHEAAI FCM] Token last 15 characters: ${tokenLast15 ?? "NOT FOUND"}',
-      );
-      debugPrint('======================================');
-    } catch (e) {
-      debugPrint('[RHEAAI FCM] DEBUG ERROR: $e');
-    }
-  }
-
   // ============================================================
   // GET CACHED TOKEN
   // ============================================================

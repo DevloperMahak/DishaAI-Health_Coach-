@@ -238,9 +238,6 @@ class AuthController extends GetxController {
 
         await _registerFcmTokenSafely();
 
-        // LOG CURRENT USER ID AND FCM TOKEN LAST 15 CHARACTERS
-        await FcmNotificationService.instance.logCurrentUserAndFcmToken();
-
         // ------------------------------------------------------
         // RETURN SUCCESS
         // ------------------------------------------------------
@@ -390,9 +387,6 @@ class AuthController extends GetxController {
         // existing authenticated session without logging in again.
 
         await _registerFcmTokenSafely();
-
-        // LOG CURRENT USER ID AND FCM TOKEN LAST 15 CHARACTERS
-        await FcmNotificationService.instance.logCurrentUserAndFcmToken();
 
         // ------------------------------------------------------
         // ONBOARDING STATUS

@@ -1,4 +1,5 @@
 import 'package:disha_ai/features/authentication/presentation/controllers/auth_controller.dart';
+import 'package:disha_ai/features/payment/data/services/payment_report_service.dart';
 import 'package:disha_ai/features/reminders/data/services/local_alarm_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -35,6 +36,7 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _exitScale;
 
   final AuthStorage _authStorage = AuthStorage.instance;
+  final PaymentReportService _paymentService = PaymentReportService();
 
   @override
   void initState() {
@@ -126,25 +128,9 @@ class _SplashScreenState extends State<SplashScreen>
     await _exitController.forward();
     if (!mounted) return;
 
-    // ============================================================
-    // OPEN INITIAL APP ROUTE
-    // ============================================================
-
     Get.offNamed(destination);
 
-    // ============================================================
-    // MARK LOCAL ALARM SERVICE AS READY
-    // ============================================================
-    //
-    // LocalAlarmService checks whether Android launched the app
-    // because of an alarm notification.
-    //
-    // We intentionally call this AFTER routing so the splash
-    // screen cannot override AlarmScreen.
-    //
-    // The service will do nothing when there is no pending alarm.
-    // ============================================================
-
+    // Mark local alarm service ready only after routing.
     await Future.delayed(const Duration(milliseconds: 300));
 
     await LocalAlarmService.instance.markAppReady();
@@ -161,24 +147,16 @@ class _SplashScreenState extends State<SplashScreen>
     print('TOKEN EXISTS: ${token != null && token.isNotEmpty}');
     print('TOKEN LENGTH: ${token?.length ?? 0}');
 
-    // ============================================================
-    // NO TOKEN → LOGIN
-    // ============================================================
-
+    // No token -> Login.
     if (token == null || token.isEmpty) {
       print('❌ NO ACCESS TOKEN');
       print('➡️ ROUTE: LOGIN');
       print('==========================================');
-
       return AppRoutes.login;
     }
 
     print('✅ ACCESS TOKEN FOUND');
     print('🔄 VALIDATING SESSION WITH SERVER...');
-
-    // ============================================================
-    // VALIDATE TOKEN + GET LATEST USER FROM BACKEND
-    // ============================================================
 
     try {
       final authController = Get.isRegistered<AuthController>()
@@ -187,10 +165,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       final result = await authController.getCurrentUser();
 
-      // ------------------------------------------------------------
-      // SERVER AUTHENTICATION FAILED
-      // ------------------------------------------------------------
-
+      // Authentication failed -> Login.
       if (result['success'] != true) {
         print('❌ SESSION VALIDATION FAILED');
         print('MESSAGE: ${result['message']}');
@@ -203,10 +178,6 @@ class _SplashScreenState extends State<SplashScreen>
 
         return AppRoutes.login;
       }
-
-      // ------------------------------------------------------------
-      // GET LATEST USER
-      // ------------------------------------------------------------
 
       final user = result['user'];
 
@@ -224,8 +195,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       final userMap = Map<String, dynamic>.from(user);
 
-      // Only the server may confirm onboarding completion.
-      // A saved questionnaire must never be sufficient for dashboard access.
+      // Read onboarding status from the latest server response.
       final data = result['data'];
       final responseData = data is Map ? data['data'] : null;
       final responseMap = responseData is Map ? responseData : null;
@@ -234,41 +204,20 @@ class _SplashScreenState extends State<SplashScreen>
         userMap['onboarding_completed'] ?? responseMap?['onboarding_completed'],
       );
 
-      // Prefer a dedicated backend payment-verification field when available.
-      // The current API documents is_premium after verified trial payment.
-      // is_premium is a compatibility safeguard, NOT proof of payment by itself.
-      final dynamic verifiedPayment =
-          userMap['onboarding_payment_verified'] ??
-          responseMap?['onboarding_payment_verified'];
-      final bool paymentEligible = verifiedPayment != null
-          ? _parseBool(verifiedPayment)
-          : _parseBool(userMap['is_premium'] ?? responseMap?['is_premium']);
-
-      final bool canOpenDashboard = onboardingCompleted && paymentEligible;
-
-      print('========== ONBOARDING ACCESS CHECK ==========');
       print('ONBOARDING COMPLETED: $onboardingCompleted');
-      print('PAYMENT ELIGIBLE: $paymentEligible');
-      print('DASHBOARD ALLOWED: $canOpenDashboard');
-      print('=============================================');
 
-      if (!canOpenDashboard) {
-        print('➡️ ROUTE: ONBOARDING (payment/onboarding incomplete)');
+      if (!onboardingCompleted) {
+        print('➡️ ROUTE: ONBOARDING');
+        print('==========================================');
         return AppRoutes.onboarding;
       }
 
-      // Only sync dashboard reminders for a fully activated account.
-      try {
-        await LocalAlarmService.instance.syncActiveAlarms();
-      } catch (e) {
-        print('⚠️ ACTIVE REMINDER SYNC FAILED: $e');
-      }
-
-      print('➡️ ROUTE: DASHBOARD');
-      return AppRoutes.dashboard;
+      // Membership must be confirmed by backend.
+      return await _determineMembershipRoute();
     } catch (e) {
       print('❌ SESSION VALIDATION ERROR: $e');
 
+      // Authentication/session validation failure.
       await _authStorage.clear();
 
       print('🧹 STORED SESSION CLEARED');
@@ -279,11 +228,86 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
+  Future<String> _determineMembershipRoute() async {
+    print('');
+    print('========== MEMBERSHIP ACCESS CHECK ==========');
+
+    try {
+      // API service returns the membership data map.
+      final membership = await _paymentService.getMembershipStatus();
+
+      if (membership == null || membership.isEmpty) {
+        print('❌ EMPTY MEMBERSHIP RESPONSE');
+        print('➡️ ROUTE: JOURNEY AHEAD');
+        print('============================================');
+        return AppRoutes.journeyAhead;
+      }
+
+      final state = membership['state']?.toString().toLowerCase();
+      final hasAccess = _parseBool(membership['has_access']);
+
+      print('MEMBERSHIP STATE: $state');
+      print('HAS ACCESS: $hasAccess');
+
+      // Active paid/trial membership -> Dashboard.
+      if ((state == 'active' || state == 'legacy_active') && hasAccess) {
+        print('✅ MEMBERSHIP ACTIVE');
+
+        try {
+          await LocalAlarmService.instance.syncActiveAlarms();
+        } catch (e) {
+          print('⚠️ ACTIVE REMINDER SYNC FAILED: $e');
+        }
+
+        print('➡️ ROUTE: DASHBOARD');
+        print('============================================');
+        return AppRoutes.dashboard;
+      }
+
+      // New user who has not purchased initial access.
+      if (state == 'initial_offer') {
+        print('ℹ️ INITIAL PAYMENT REQUIRED');
+        print('➡️ ROUTE: JOURNEY AHEAD');
+        print('============================================');
+        return AppRoutes.journeyAhead;
+      }
+
+      // Trial/monthly membership expired.
+      if (state == 'upgrade_required') {
+        print('⚠️ MEMBERSHIP UPGRADE REQUIRED');
+        print('➡️ ROUTE: UPGRADE PREMIUM');
+        print('============================================');
+        return AppRoutes.upgradePremium;
+      }
+
+      // Any unknown state or access=false must not open Dashboard.
+      print('⚠️ MEMBERSHIP NOT CONFIRMED');
+      print('➡️ ROUTE: JOURNEY AHEAD');
+      print('============================================');
+
+      return AppRoutes.journeyAhead;
+    } catch (e) {
+      // IMPORTANT:
+      // If membership API fails, keep the user on Journey Ahead.
+      // Never grant Dashboard access because of an API/network error.
+      print('❌ MEMBERSHIP API ERROR: $e');
+      print('➡️ ROUTE: JOURNEY AHEAD');
+      print('============================================');
+
+      return AppRoutes.journeyAhead;
+    }
+  }
+
   bool _parseBool(dynamic value) {
     if (value is bool) return value;
-    if (value is String)
-      return value.trim().toLowerCase() == 'true' || value.trim() == '1';
+
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      return normalized == 'true' || normalized == '1';
+    }
+
     if (value is int) return value == 1;
+
     return false;
   }
 
